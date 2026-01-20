@@ -1,98 +1,117 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useState } from "react";
+import { StyleSheet } from "react-native";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import AddTransactionModal from "../../components/AddTransactionModal";
+import DateHeader from "../../components/DateHeader";
+import SummaryCards from "../../components/SummaryCards";
+import TransactionsList from "../../components/TransactionsList";
+import { DEFAULT_ACCOUNTS, mockTransactions } from "../../constants/constrants";
+import { NewTransactionForm, TransactionsByDate } from "../../types/homeTypes";
+import { calculateDailySummary } from "../../utils/calculations";
+import { changeDay, formatDate, formatDisplayDate } from "../../utils/dateUtils";
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const insets = useSafeAreaInsets(); // get safe area insets for top/bottom
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const [date, setDate] = useState(new Date());
+  const [transactions, setTransactions] = useState<TransactionsByDate>(mockTransactions);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTransaction, setNewTransaction] = useState<NewTransactionForm>({
+    title: "",
+    amount: "",
+    type: "expense",
+    category: "other",
+    account: "cash",
+  });
+
+  const dateKey = formatDate(date);
+  const dayTransactions = transactions[dateKey] || [];
+  const summary = calculateDailySummary(dayTransactions);
+
+  const handleChangeDay = (diff: number) => setDate(changeDay(date, diff));
+  const handleGoToToday = () => setDate(new Date());
+
+  const handleAddTransaction = () => {
+    if (!newTransaction.title || !newTransaction.amount) return;
+
+    const amount =
+      newTransaction.type === "income"
+        ? Math.abs(parseFloat(newTransaction.amount))
+        : -Math.abs(parseFloat(newTransaction.amount));
+
+    const transaction = {
+      id: Date.now().toString(),
+      title: newTransaction.title,
+      amount,
+      type: newTransaction.type,
+      category: newTransaction.category,
+      account: newTransaction.account,
+    };
+
+    setTransactions((prev) => ({
+      ...prev,
+      [dateKey]: [...(prev[dateKey] || []), transaction],
+    }));
+
+    setNewTransaction({
+      title: "",
+      amount: "",
+      type: "expense",
+      category: "other",
+      account: "cash",
+    });
+    setModalVisible(false);
+  };
+
+  const handleDeleteTransaction = (id: string) => {
+    setTransactions((prev) => ({
+      ...prev,
+      [dateKey]: (prev[dateKey] || []).filter((t) => t.id !== id),
+    }));
+  };
+
+  const updateNewTransaction = (updates: Partial<NewTransactionForm>) => {
+    setNewTransaction({ ...newTransaction, ...updates });
+  };
+
+  return (
+    <SafeAreaView>
+      <DateHeader
+        displayDate={formatDisplayDate(date)}
+        onPreviousDay={() => handleChangeDay(-1)}
+        onNextDay={() => handleChangeDay(1)}
+        onToday={handleGoToToday}
+      />
+
+      <SummaryCards summary={summary} />
+
+      <TransactionsList
+        transactions={dayTransactions}
+        accounts={DEFAULT_ACCOUNTS}
+        onAddTransaction={() => setModalVisible(true)}
+        onDeleteTransaction={handleDeleteTransaction}
+      />
+
+      <AddTransactionModal
+        visible={modalVisible}
+        transaction={newTransaction}
+        accounts={DEFAULT_ACCOUNTS}
+        onClose={() => setModalVisible(false)}
+        onSubmit={handleAddTransaction}
+        onUpdateTransaction={updateNewTransaction}
+      />
+    </SafeAreaView>
   );
 }
 
+// Wrap your **app entry** in SafeAreaProvider once (App.tsx or _layout.tsx)
+export function AppWrapper({ children }: { children: React.ReactNode }) {
+  return <SafeAreaProvider>{children}</SafeAreaProvider>;
+}
+
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: "#f9fafb",
   },
 });
