@@ -1,7 +1,7 @@
 // components/TransactionItem.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Transaction } from "../types/homeTypes";
+import { Transaction } from "../types/types";
 
 type Account = {
   id: string;

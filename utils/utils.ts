@@ -45,14 +45,15 @@ export const getRate = async (currency: string): Promise<number> => {
 };
 
 
-// utils/utils.ts
-export const convertCurrency = (amount: number, from: string, to: string): number => {
-  const rates: Record<string, number> = {
-    UAH: 1,
-    USD: 40, // example: 1 USD = 40 UAH
-    EUR: 45, // example: 1 EUR = 45 UAH
-  };
-
+export const convertCurrency = async (
+  amount: number,
+  from: string,
+  to: string
+): Promise<number> => {
   if (from === to) return amount;
-  return (amount / (rates[from] || 1)) * (rates[to] || 1);
+
+  const fromRate = await getRate(from);
+  const toRate = await getRate(to);
+
+  return (amount / fromRate) * toRate;
 };

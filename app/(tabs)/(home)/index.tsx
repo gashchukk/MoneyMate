@@ -7,7 +7,7 @@ import DateHeader from "@/components/DateHeader";
 import SummaryCards from "@/components/SummaryCards";
 import TransactionsList from "@/components/TransactionsList";
 import { DEFAULT_ACCOUNTS, mockTransactions } from "@/constants/constrants";
-import { NewTransactionForm, TransactionsByDate } from "@/types/homeTypes";
+import { NewTransactionForm, TransactionsByDate } from "@/types/types";
 import { calculateDailySummary } from "@/utils/calculations";
 import { changeDay, formatDate, formatDisplayDate } from "@/utils/dateUtils";
 

@@ -1,17 +1,6 @@
 import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert, Pressable, KeyboardAvoidingView, Platform, Linking } from "react-native";
 import { saveMonoToken } from "@/storage/monobankToken";
-
-type MonobankAccount = {
-  id: string;
-  sendId: string;
-  currencyCode: number;
-  cashbackType: string;
-  balance: number;
-  creditLimit: number;
-  maskedPan: string[];
-  type: string;
-  iban: string;
-};
+import { MonobankAccount } from "@/types/types";
 
 type Props = {
   visible: boolean;

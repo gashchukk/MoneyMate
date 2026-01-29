@@ -9,6 +9,11 @@ export type Account = {
   isMono?: boolean;      // optional because DEFAULT_ACCOUNTS may not have it
 };
 
+export type DailySummary = {
+  totalIncome: number;
+  totalExpense: number;
+  balance: number;
+};
 
 export type Transaction = {
   id: string;
@@ -19,9 +24,18 @@ export type Transaction = {
   account: string;
   date?: string;
 };
+export type TransactionType = "income" | "expense";
 
 export type TransactionsByDate = {
   [date: string]: Transaction[];
+};
+
+export type NewTransactionForm = {
+  title: string;
+  amount: string;
+  type: TransactionType;
+  category: string;
+  account: string;
 };
 
 export type AccountWithBalance = Account & {

@@ -1,6 +1,6 @@
 // components/SummaryCards.tsx
 import { View, Text, StyleSheet } from "react-native";
-import { DailySummary } from "../types/homeTypes";
+import { DailySummary } from "../types/types";
 
 type Props = {
   summary: DailySummary;

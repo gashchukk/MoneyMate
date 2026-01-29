@@ -1,5 +1,5 @@
 // utils/calculations.ts
-import { Transaction, DailySummary } from "../types/homeTypes";
+import { Transaction, DailySummary } from "../types/types";
 
 export function calculateDailySummary(transactions: Transaction[]): DailySummary {
   const totalIncome = transactions

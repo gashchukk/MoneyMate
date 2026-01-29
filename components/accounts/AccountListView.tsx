@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native
 import { AccountWithBalance } from "../../types/types";
 import { getRate } from "../../utils/utils";
 import { useSettings } from "@/context/SettingsContext";
+import { ScrollView } from "react-native"; // import ScrollView
 
 type Props = {
   accounts: AccountWithBalance[];
@@ -22,100 +23,121 @@ export default function AccountsListView({
   onSelectAccount,
   onLinkMono,
 }: Props) {
-  const { currency: displayCurrency } = useSettings(); // use system currency
+  const { currency: displayCurrency } = useSettings(); // system currency
   const [convertedAccounts, setConvertedAccounts] = useState<ConvertedAccount[]>([]);
   const [totalBalance, setTotalBalance] = useState(0);
+  const [rates, setRates] = useState<Record<string, number>>({}); // store rates for tiles
 
-  useEffect(() => {
-    async function fetchAndConvert() {
-      const allCurrencies = Array.from(
-        new Set([...accounts.map(acc => acc.currency), displayCurrency])
-      );
+  // Add at the top of your component
+const [exchangeRates, setExchangeRates] = useState<{ currency: string; rate: number }[]>([]);
 
-      const rates: { [key: string]: number } = {};
-      for (const curr of allCurrencies) {
-        rates[curr] = await getRate(curr);
-      }
+useEffect(() => {
+  async function fetchAndConvert() {
+    const allCurrencies = Array.from(
+      new Set([...accounts.map(acc => acc.currency), displayCurrency, "USD", "EUR"])
+    );
 
-      const converted: ConvertedAccount[] = accounts.map(acc => ({
-        ...acc,
-        convertedBalance: acc.balance * (rates[acc.currency] / rates[displayCurrency]),
-      }));
-
-      const sum = converted.reduce((a, acc) => a + acc.convertedBalance!, 0);
-
-      setConvertedAccounts(converted);
-      setTotalBalance(sum);
+    const rates: { [key: string]: number } = {};
+    for (const curr of allCurrencies) {
+      rates[curr] = await getRate(curr);
     }
 
-    fetchAndConvert();
-  }, [accounts, displayCurrency]);
+    // Prepare converted balances for accounts
+    const converted: ConvertedAccount[] = accounts.map(acc => ({
+      ...acc,
+      convertedBalance: acc.balance * (rates[acc.currency] / rates[displayCurrency]),
+    }));
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Accounts</Text>
-        <TouchableOpacity onPress={onAddAccount} style={styles.addAccountButton}>
-          <Ionicons name="add-circle" size={28} color="#3b82f6" />
-        </TouchableOpacity>
+    // Prepare exchange rate tiles
+    const tiles = ["USD", "EUR"].map(curr => ({
+      currency: curr,
+      rate: rates[curr] / rates[displayCurrency],
+    }));
+
+    const sum = converted.reduce((a, acc) => a + acc.convertedBalance!, 0);
+
+    setConvertedAccounts(converted);
+    setTotalBalance(sum);
+    setExchangeRates(tiles);
+  }
+
+  fetchAndConvert();
+}, [accounts, displayCurrency]);
+
+
+
+return (
+  <View style={styles.container}>
+    {/* Header */}
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Accounts</Text>
+      <TouchableOpacity onPress={onAddAccount} style={styles.addAccountButton}>
+        <Ionicons name="add-circle" size={28} color="#3b82f6" />
+      </TouchableOpacity>
+    </View>
+
+    {/* Total Balance Card */}
+    <View style={styles.totalBalanceCard}>
+      <Text style={styles.totalBalanceLabel}>Total Balance</Text>
+      <Text
+        style={[
+          styles.totalBalanceAmount,
+          { color: totalBalance >= 0 ? "#10b981" : "#ef4444" },
+        ]}
+      >
+        {totalBalance.toFixed(2)} {displayCurrency}
+      </Text>
+      <Text style={styles.totalBalanceSubtext}>Across all accounts</Text>
+    </View>
+
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+      {/* Exchange Rate Tiles */}
+      {/* Exchange Rate Tiles */}
+      <View style={styles.tilesContainer}>
+        {exchangeRates.map(er => (
+          <View key={er.currency} style={styles.tile}>
+            <Text style={styles.tileText}>
+              1 {er.currency} ≈ {er.rate.toFixed(2)} {displayCurrency}
+            </Text>
+          </View>
+        ))}
       </View>
 
-      {/* Total Balance Card */}
-      <View style={styles.totalBalanceCard}>
-        <Text style={styles.totalBalanceLabel}>Total Balance</Text>
-        <Text
-          style={[
-            styles.totalBalanceAmount,
-            { color: totalBalance >= 0 ? "#10b981" : "#ef4444" },
-          ]}
-        >
-          {totalBalance.toFixed(2)} {displayCurrency}
-        </Text>
-        <Text style={styles.totalBalanceSubtext}>Across all accounts</Text>
-      </View>
 
       {/* Accounts List */}
       <View style={styles.accountsSection}>
         <Text style={styles.sectionTitle}>Your Accounts</Text>
-        <FlatList
-          data={convertedAccounts}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.accountCard}
-              onPress={() => onSelectAccount(item.id)}
-            >
-              <View style={styles.accountCardLeft}>
-                <View style={[styles.accountIcon, { backgroundColor: item.color }]}>
-                  <Ionicons name={item.icon as any} size={24} color="#fff" />
-                </View>
-                <View>
-                  <Text style={styles.accountName}>{item.label}</Text>
-
-                  {/* Display original balance */}
-                  <Text style={styles.accountBalance}>
-                    {item.balance.toFixed(2)} {item.currency}
-                  </Text>
-
-                  {/* Display converted balance if different from system currency */}
-                  {item.currency !== displayCurrency && (
-                    <Text style={[styles.accountBalance, { fontSize: 14, color: "#6b7280" }]}>
-                      ≈ {item.convertedBalance?.toFixed(2)} {displayCurrency}
-                    </Text>
-                  )}
-                </View>
+        {convertedAccounts.map(item => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.accountCard}
+            onPress={() => onSelectAccount(item.id)}
+          >
+            <View style={styles.accountCardLeft}>
+              <View style={[styles.accountIcon, { backgroundColor: item.color }]}>
+                <Ionicons name={item.icon as any} size={24} color="#fff" />
               </View>
-
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-            </TouchableOpacity>
-          )}
-        />
-
+              <View>
+                <Text style={styles.accountName}>{item.label}</Text>
+                <Text style={styles.accountBalance}>
+                  {item.balance.toFixed(2)} {item.currency}
+                </Text>
+                {item.currency !== displayCurrency && (
+                  <Text style={[styles.accountBalance, { fontSize: 14, color: "#6b7280" }]}>
+                    ≈ {item.convertedBalance?.toFixed(2)} {displayCurrency}
+                  </Text>
+                )}
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        ))}
       </View>
-    </View>
-  );
+    </ScrollView>
+  </View>
+);
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -129,6 +151,32 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  tilesContainer: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  paddingHorizontal: 16,
+  marginBottom: 12,
+},
+tile: {
+  backgroundColor: "#fff",
+  padding: 12,
+  borderRadius: 12,
+  width: "48%",
+  marginBottom: 8,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.05,
+  shadowRadius: 2,
+  elevation: 2,
+},
+tileText: {
+  fontSize: 14,
+  fontWeight: "600",
+  color: "#111827",
+  textAlign: "center",
+},
+
   headerTitle: {
     fontSize: 28,
     fontWeight: "700",
