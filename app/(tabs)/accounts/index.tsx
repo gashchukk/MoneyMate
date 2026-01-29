@@ -8,13 +8,13 @@ import AccountModal from "@/components/accounts/AccountModal";
 
 import { DEFAULT_ACCOUNTS, mockTransactions } from "@/constants/constrants";
 import { useAccounts } from "@/context/AccountsContext";
+import { useSettings } from "@/context/SettingsContext";
 import { Account } from "@/types/types";
-import { calculateAccountBalance } from "@/utils/utils";
+import { calculateAccountBalance, convertCurrency } from "@/utils/utils";
 
 export default function AccountsScreen() {
   const { accounts, setAccounts } = useAccounts(); 
-
-
+  const { currency: systemCurrency } = useSettings(); // get system currency
 
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -25,14 +25,26 @@ export default function AccountsScreen() {
     icon: "wallet-outline",
     color: "#3b82f6",
     balance: 0,
-    currency: "UAH",
+    currency: systemCurrency,
   };
   const [newAccount, setNewAccount] = useState<Account>(EMPTY_ACCOUNT);
 
-  // Map accounts to show updated balances for non-Mono accounts
-  const accountsWithBalances = accounts.map(acc =>
-    acc.isMono ? acc : { ...acc, balance: calculateAccountBalance(acc.id, mockTransactions) }
-  );
+  // Map accounts to show updated balances
+  const accountsWithBalances = accounts.map(acc => {
+    // Calculate original balance
+    const originalBalance =
+      acc.isMono || acc.currency !== systemCurrency
+        ? acc.balance
+        : calculateAccountBalance(acc.id, mockTransactions);
+
+    // Convert to system currency if different
+    const convertedBalance =
+      acc.currency !== systemCurrency
+        ? convertCurrency(originalBalance, acc.currency, systemCurrency)
+        : undefined;
+
+    return { ...acc, displayBalance: originalBalance, convertedBalance };
+  });
 
   // Open Add Account modal
   const openAddModal = () => {
@@ -48,7 +60,7 @@ export default function AccountsScreen() {
       return;
     }
 
-    setAccounts((prev: Account[]) => {
+    setAccounts(prev => {
       if (editingAccount) {
         return prev.map(acc =>
           acc.id === editingAccount.id
@@ -56,12 +68,13 @@ export default function AccountsScreen() {
             : acc
         );
       } else {
-        return [...prev, { ...newAccount, id: Date.now().toString(), label: newAccount.label.trim() }];
+        return [
+          ...prev,
+          { ...newAccount, id: Date.now().toString(), label: newAccount.label.trim() },
+        ];
       }
     });
 
-
-    // Reset modal state
     setEditingAccount(null);
     setNewAccount(EMPTY_ACCOUNT);
     setModalVisible(false);
@@ -73,7 +86,7 @@ export default function AccountsScreen() {
         accounts={accountsWithBalances}
         onAddAccount={openAddModal}
         onSelectAccount={id => router.push(`/accounts/${id}`)}
-        onLinkMono={() => null} // linking removed, handled in settings
+        onLinkMono={() => null} // linking handled in settings
       />
 
       <AccountModal

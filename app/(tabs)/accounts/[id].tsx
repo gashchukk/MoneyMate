@@ -8,12 +8,13 @@ import AccountDetailView from "@/components/accounts/AccountDetailView";
 import { DEFAULT_ACCOUNTS, mockTransactions } from "@/constants/constrants";
 import { Account } from "@/types/types";
 import { calculateAccountBalance, getAccountTransactions } from "@/utils/utils";
-
+import { useAccounts } from '@/context/AccountsContext';
 export default function AccountDetailScreen() {
   const { id } = useLocalSearchParams();
   const accountId = Array.isArray(id) ? id[0] : id;
 
-  const [accounts, setAccounts] = useState<Account[]>(DEFAULT_ACCOUNTS);
+  const { accounts, setAccounts } = useAccounts();
+
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);

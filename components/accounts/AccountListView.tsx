@@ -92,15 +92,26 @@ export default function AccountsListView({
                 </View>
                 <View>
                   <Text style={styles.accountName}>{item.label}</Text>
+
+                  {/* Display original balance */}
                   <Text style={styles.accountBalance}>
-                    {item.convertedBalance?.toFixed(2)} {displayCurrency}
+                    {item.balance.toFixed(2)} {item.currency}
                   </Text>
+
+                  {/* Display converted balance if different from system currency */}
+                  {item.currency !== displayCurrency && (
+                    <Text style={[styles.accountBalance, { fontSize: 14, color: "#6b7280" }]}>
+                      ≈ {item.convertedBalance?.toFixed(2)} {displayCurrency}
+                    </Text>
+                  )}
                 </View>
               </View>
+
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           )}
         />
+
       </View>
     </View>
   );

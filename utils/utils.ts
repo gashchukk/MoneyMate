@@ -43,3 +43,16 @@ export const getRate = async (currency: string): Promise<number> => {
 
   return data[0]?.rate ?? 1;
 };
+
+
+// utils/utils.ts
+export const convertCurrency = (amount: number, from: string, to: string): number => {
+  const rates: Record<string, number> = {
+    UAH: 1,
+    USD: 40, // example: 1 USD = 40 UAH
+    EUR: 45, // example: 1 EUR = 45 UAH
+  };
+
+  if (from === to) return amount;
+  return (amount / (rates[from] || 1)) * (rates[to] || 1);
+};
