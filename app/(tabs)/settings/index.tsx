@@ -14,17 +14,6 @@ export default function SettingsScreen() {
 
   const [monoToken, setMonoToken] = useState("");
 
-  // On mount: check for saved token and existing mono accounts
-  useEffect(() => {
-    (async () => {
-      const token = await getMonoToken();
-      if (token) {
-        setMonoToken(token);
-        setMonoLinked(accounts.some(acc => acc.isMono));
-      }
-    })();
-  }, [accounts]);
-
   // Handle Monobank linking
   const handleMonoLink = async () => {
     if (monoLinked) {
