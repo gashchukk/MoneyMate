@@ -1,34 +1,30 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Picker } from "@react-native-picker/picker";
 import { useEffect, useState } from "react";
-import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { AccountWithBalance } from "../../types/types";
 import { getRate } from "../../utils/utils";
+import { useSettings } from "@/context/SettingsContext";
 
 type Props = {
   accounts: AccountWithBalance[];
-  monoLinked: boolean;
-  totalBalance: number;      
   onAddAccount: () => void;
   onSelectAccount: (accountId: string) => void;
   onLinkMono: () => void;
 };
+
 type ConvertedAccount = AccountWithBalance & {
   convertedBalance: number;
 };
 
-
 export default function AccountsListView({
   accounts,
-  monoLinked,
   onAddAccount,
   onSelectAccount,
   onLinkMono,
 }: Props) {
-  const [displayCurrency, setDisplayCurrency] = useState("UAH");
-  const [modalVisible, setModalVisible] = useState(false);
-  const [totalBalance, setTotalBalance] = useState(0);
+  const { currency: displayCurrency } = useSettings(); // use system currency
   const [convertedAccounts, setConvertedAccounts] = useState<ConvertedAccount[]>([]);
+  const [totalBalance, setTotalBalance] = useState(0);
 
   useEffect(() => {
     async function fetchAndConvert() {
@@ -36,20 +32,16 @@ export default function AccountsListView({
         new Set([...accounts.map(acc => acc.currency), displayCurrency])
       );
 
-      // Fetch all rates once
       const rates: { [key: string]: number } = {};
       for (const curr of allCurrencies) {
         rates[curr] = await getRate(curr);
       }
 
-      // Convert accounts
       const converted: ConvertedAccount[] = accounts.map(acc => ({
         ...acc,
         convertedBalance: acc.balance * (rates[acc.currency] / rates[displayCurrency]),
       }));
 
-
-      // Sum total balance
       const sum = converted.reduce((a, acc) => a + acc.convertedBalance!, 0);
 
       setConvertedAccounts(converted);
@@ -70,7 +62,7 @@ export default function AccountsListView({
       </View>
 
       {/* Total Balance Card */}
-      <TouchableOpacity style={styles.totalBalanceCard} onPress={() => setModalVisible(true)}>
+      <View style={styles.totalBalanceCard}>
         <Text style={styles.totalBalanceLabel}>Total Balance</Text>
         <Text
           style={[
@@ -81,7 +73,7 @@ export default function AccountsListView({
           {totalBalance.toFixed(2)} {displayCurrency}
         </Text>
         <Text style={styles.totalBalanceSubtext}>Across all accounts</Text>
-      </TouchableOpacity>
+      </View>
 
       {/* Accounts List */}
       <View style={styles.accountsSection}>
@@ -110,40 +102,6 @@ export default function AccountsListView({
           )}
         />
       </View>
-    <View style={styles.monoSection}>
-        <Text style={styles.sectionTitle}>Bank Integration</Text>
-
-        <TouchableOpacity
-            style={[styles.monoButton, monoLinked && { backgroundColor: "#10b981" }]}
-            onPress={onLinkMono}
-            disabled={monoLinked}
-        >
-            <Ionicons name="link-outline" size={20} color="#fff" />
-            <Text style={styles.monoButtonText}>
-            {monoLinked ? "Monobank Linked" : "Link your Monobank account"}
-            </Text>
-        </TouchableOpacity>
-    </View>
-      {/* Currency Picker Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Display Currency</Text>
-            <Picker
-              selectedValue={displayCurrency}
-              onValueChange={(val) => setDisplayCurrency(val)}
-            >
-              <Picker.Item label="UAH" value="UAH" />
-              <Picker.Item label="USD" value="USD" />
-              <Picker.Item label="EUR" value="EUR" />
-            </Picker>
-            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-              <Text style={styles.closeButton}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
     </View>
   );
 }
