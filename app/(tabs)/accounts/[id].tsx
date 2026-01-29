@@ -33,7 +33,8 @@ export default function AccountDetailScreen() {
     return null; // or some error screen
   }
 
-  const balance = account.isMono ? account.balance : calculateAccountBalance(accountId, mockTransactions);
+  // const balance = account.isMono ? account.balance : calculateAccountBalance(accountId, mockTransactions);
+  const balance = account.balance;
   const transactions = getAccountTransactions(accountId, mockTransactions);
 
   const saveAccount = () => {
@@ -70,7 +71,7 @@ export default function AccountDetailScreen() {
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       <AccountDetailView
         account={account}
-        balance={balance ?? 0}
+        balance={balance}
         transactions={transactions}
         onBack={() => router.back()}
         onEdit={acc => {
