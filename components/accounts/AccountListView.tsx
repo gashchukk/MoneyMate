@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View, Modal } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import { AccountWithBalance } from "../types/types";
-import { getRate } from "../utils/utils";
+import { useEffect, useState } from "react";
+import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AccountWithBalance } from "../../types/types";
+import { getRate } from "../../utils/utils";
 
 type Props = {
   accounts: AccountWithBalance[];
@@ -12,6 +12,9 @@ type Props = {
   onAddAccount: () => void;
   onSelectAccount: (accountId: string) => void;
   onLinkMono: () => void;
+};
+type ConvertedAccount = AccountWithBalance & {
+  convertedBalance: number;
 };
 
 
@@ -24,8 +27,8 @@ export default function AccountsListView({
 }: Props) {
   const [displayCurrency, setDisplayCurrency] = useState("UAH");
   const [modalVisible, setModalVisible] = useState(false);
-  const [convertedAccounts, setConvertedAccounts] = useState<AccountWithBalance[]>([]);
   const [totalBalance, setTotalBalance] = useState(0);
+  const [convertedAccounts, setConvertedAccounts] = useState<ConvertedAccount[]>([]);
 
   useEffect(() => {
     async function fetchAndConvert() {
@@ -40,10 +43,11 @@ export default function AccountsListView({
       }
 
       // Convert accounts
-      const converted = accounts.map(acc => ({
+      const converted: ConvertedAccount[] = accounts.map(acc => ({
         ...acc,
-        convertedBalance: acc.balance * (rates[acc.currency] / rates[displayCurrency])
+        convertedBalance: acc.balance * (rates[acc.currency] / rates[displayCurrency]),
       }));
+
 
       // Sum total balance
       const sum = converted.reduce((a, acc) => a + acc.convertedBalance!, 0);

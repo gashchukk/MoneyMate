@@ -9,8 +9,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { AVAILABLE_COLORS, AVAILABLE_ICONS } from "../constants/constrants";
-import { Account } from "../types/types";
+import { AVAILABLE_COLORS, AVAILABLE_ICONS } from "@/constants/constrants";
+import { Account } from "@/types/types";
 
 type Props = {
   visible: boolean;

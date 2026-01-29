@@ -34,17 +34,17 @@ export const AVAILABLE_COLORS = [
 import { Transaction } from "../types/types";
 
 export const mockTransactions: Record<string, Transaction[]> = {
-  "2026-01-20": [
-    { id: "1", title: "Salary", amount: 1200, type: "income", category: "salary", account: "card" },
-    { id: "2", title: "Groceries", amount: -45, type: "expense", category: "food", account: "card" },
-    { id: "3", title: "Coffee", amount: -5, type: "expense", category: "food", account: "cash" },
-  ],
-  "2026-01-21": [
-    { id: "4", title: "Transport", amount: -12, type: "expense", category: "transport", account: "cash" },
-    { id: "5", title: "Online Shopping", amount: -89, type: "expense", category: "shopping", account: "credit" },
-  ],
-  "2026-01-19": [
-    { id: "6", title: "Freelance Payment", amount: 500, type: "income", category: "work", account: "card" },
-    { id: "7", title: "Savings Deposit", amount: 200, type: "income", category: "transfer", account: "savings" },
-  ],
+  // "2026-01-20": [
+  //   { id: "1", title: "Salary", amount: 1200, type: "income", category: "salary", account: "card" },
+  //   { id: "2", title: "Groceries", amount: -45, type: "expense", category: "food", account: "card" },
+  //   { id: "3", title: "Coffee", amount: -5, type: "expense", category: "food", account: "cash" },
+  // ],
+  // "2026-01-21": [
+  //   { id: "4", title: "Transport", amount: -12, type: "expense", category: "transport", account: "cash" },
+  //   { id: "5", title: "Online Shopping", amount: -89, type: "expense", category: "shopping", account: "credit" },
+  // ],
+  // "2026-01-19": [
+  //   { id: "6", title: "Freelance Payment", amount: 500, type: "income", category: "work", account: "card" },
+  //   { id: "7", title: "Savings Deposit", amount: 200, type: "income", category: "transfer", account: "savings" },
+  // ],
 };

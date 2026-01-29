@@ -1,14 +1,15 @@
+import { router } from 'expo-router';
 import { useState } from "react";
 import { StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import AddTransactionModal from "../../components/AddTransactionModal";
-import DateHeader from "../../components/DateHeader";
-import SummaryCards from "../../components/SummaryCards";
-import TransactionsList from "../../components/TransactionsList";
-import { DEFAULT_ACCOUNTS, mockTransactions } from "../../constants/constrants";
-import { NewTransactionForm, TransactionsByDate } from "../../types/homeTypes";
-import { calculateDailySummary } from "../../utils/calculations";
-import { changeDay, formatDate, formatDisplayDate } from "../../utils/dateUtils";
+import AddTransactionModal from "@/components/AddTransactionModal";
+import DateHeader from "@/components/DateHeader";
+import SummaryCards from "@/components/SummaryCards";
+import TransactionsList from "@/components/TransactionsList";
+import { DEFAULT_ACCOUNTS, mockTransactions } from "@/constants/constrants";
+import { NewTransactionForm, TransactionsByDate } from "@/types/homeTypes";
+import { calculateDailySummary } from "@/utils/calculations";
+import { changeDay, formatDate, formatDisplayDate } from "@/utils/dateUtils";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets(); // get safe area insets for top/bottom
@@ -90,6 +91,7 @@ export default function HomeScreen() {
         accounts={DEFAULT_ACCOUNTS}
         onAddTransaction={() => setModalVisible(true)}
         onDeleteTransaction={handleDeleteTransaction}
+        onSelectTransaction={(id) => router.push(`./transaction/${id}`)}
       />
 
       <AddTransactionModal

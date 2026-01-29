@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert, Pressable, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert, Pressable, KeyboardAvoidingView, Platform, Linking } from "react-native";
+import { saveMonoToken } from "@/storage/monobankToken";
 
 type MonobankAccount = {
   id: string;
@@ -53,7 +54,9 @@ export default function MonobankModal({
       }
 
       // Pass accounts to parent
+      await saveMonoToken(monoToken);
       onConnect(data.accounts);
+
     } catch (error) {
       console.log(error);
       Alert.alert("Connection failed", "Could not fetch Monobank accounts");
@@ -69,6 +72,15 @@ export default function MonobankModal({
         >
           <Pressable onPress={() => {}} style={styles.modalContent}>
             <Text style={styles.modalTitle}>Connect Monobank</Text>
+            <Pressable
+              style={styles.infoCard}
+              onPress={() => Linking.openURL("https://api.monobank.ua/index.html")}
+            >
+              <Text style={styles.infoTitle}>Get Monobank API token</Text>
+              <Text style={styles.infoSubtitle}>
+                Tap to open official Monobank authorization page
+              </Text>
+            </Pressable>
 
             <TextInput
               style={styles.input}
@@ -93,6 +105,52 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
   },
+  linkText: {
+  fontSize: 16,
+  color: "#2563eb",
+  textDecorationLine: "underline",
+  marginBottom: 16,
+  },
+  ordinaryText:{
+    fontSize: 18,
+    fontWeight: "300",
+    color: "#111827",
+    marginBottom: 24,
+
+  },
+  linkButton: {
+  borderWidth: 1,
+  borderColor: "#3b82f6",
+  borderRadius: 8,
+  paddingVertical: 12,
+  alignItems: "center",
+  marginBottom: 20,
+  backgroundColor: "#eff6ff",
+},
+linkButtonText: {
+  color: "#3b82f6",
+  fontSize: 16,
+  fontWeight: "600",
+},
+infoCard: {
+  backgroundColor: "#f9fafb",
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 20,
+  borderWidth: 1,
+  borderColor: "#e5e7eb",
+},
+infoTitle: {
+  fontSize: 16,
+  fontWeight: "600",
+  color: "#111827",
+  marginBottom: 4,
+},
+infoSubtitle: {
+  fontSize: 14,
+  color: "#6b7280",
+},
+
   modalContent: {
     backgroundColor: "#fff",
     borderTopLeftRadius: 20,

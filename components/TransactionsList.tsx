@@ -1,6 +1,6 @@
 // components/TransactionsList.tsx
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Transaction } from "../types/homeTypes";
 import TransactionItem from "./TransactionItems";
 
@@ -16,6 +16,7 @@ type Props = {
   accounts: Account[];
   onAddTransaction: () => void;
   onDeleteTransaction: (id: string) => void;
+  onSelectTransaction: (id: string) => void;
 };
 
 export default function TransactionsList({
@@ -23,6 +24,7 @@ export default function TransactionsList({
   accounts,
   onAddTransaction,
   onDeleteTransaction,
+  onSelectTransaction,
 }: Props) {
   const getAccountInfo = (accountId: string): Account => {
     return accounts.find(a => a.id === accountId) || accounts[0];
@@ -52,6 +54,7 @@ export default function TransactionsList({
             transaction={item}
             accountInfo={getAccountInfo(item.account)}
             onDelete={onDeleteTransaction}
+            onSelect={onSelectTransaction}
           />
         )}
       />

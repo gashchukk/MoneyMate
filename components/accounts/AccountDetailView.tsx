@@ -1,7 +1,7 @@
 // AccountDetailView.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Account, Transaction } from "../types/types";
+import { Account, Transaction } from "../../types/types";
 
 type Props = {
   account: Account;

@@ -1,6 +1,6 @@
 // components/TransactionItem.tsx
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Transaction } from "../types/homeTypes";
 
 type Account = {
@@ -14,17 +14,19 @@ type Props = {
   transaction: Transaction;
   accountInfo: Account;
   onDelete: (id: string) => void;
+  onSelect: (id: string) => void;
 };
 
 export default function TransactionItem({
   transaction,
   accountInfo,
   onDelete,
+  onSelect,
 }: Props) {
   const isIncome = transaction.amount > 0;
 
   return (
-    <View style={styles.transactionItem}>
+    <TouchableOpacity style={styles.transactionItem} onPress={() => onSelect(transaction.id)}>
       <View style={styles.transactionLeft}>
         <View
           style={[
@@ -72,7 +74,7 @@ export default function TransactionItem({
           <Ionicons name="trash-outline" size={18} color="#999" />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
