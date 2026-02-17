@@ -1,45 +1,72 @@
-// app/(tabs)/_layout.tsx
 import { Tabs } from 'expo-router';
-import React from 'react';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { AppProvider, useAppSettings, t } from '@/components/AppContext';
 
-
-export default function TabLayout() {
+function TabsWithContext() {
+  const { language } = useAppSettings();
   return (
-    <Tabs screenOptions={{ headerShown: false }}>
-      {/* Home / Spendings */}
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#8B1A1A',
+        tabBarInactiveTintColor: '#bbb',
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopWidth: 1,
+          borderTopColor: '#f0f0f0',
+          height: 80,
+          paddingBottom: 16,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+      }}
+    >
       <Tabs.Screen
-        name="(home)"
+        name="index"
         options={{
-          title: 'Spendings',
+          title: t('transactions', language),
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="money-check-dollar" size={24} color={color} />
+            <TabIcon emoji="💳" color={color} />
           ),
         }}
       />
-
-      {/* Accounts */}
       <Tabs.Screen
         name="accounts"
         options={{
-          title: 'Accounts',
+          title: t('accounts', language),
           tabBarIcon: ({ color }) => (
-            <FontAwesome6 name="money-bills" size={24} color={color} />
+            <TabIcon emoji="🏦" color={color} />
           ),
         }}
       />
-
-      {/* Settings */}
       <Tabs.Screen
-        name="settings/index"
+        name="settings"
         options={{
-          title: 'Settings',
+          title: t('settings', language),
           tabBarIcon: ({ color }) => (
-            <FontAwesome name="gear" size={24} color={color} />
+            <TabIcon emoji="⚙️" color={color} />
           ),
         }}
       />
     </Tabs>
+  );
+}
+
+function TabIcon({ emoji, color }: { emoji: string; color: string }) {
+  const { Text, View } = require('react-native');
+  return (
+    <View style={{ opacity: color === '#8B1A1A' ? 1 : 0.4 }}>
+      <Text style={{ fontSize: 22 }}>{emoji}</Text>
+    </View>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <AppProvider>
+      <TabsWithContext />
+    </AppProvider>
   );
 }
