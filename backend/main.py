@@ -67,6 +67,7 @@ def create_account(account: schemas.AccountCreate,
         type=account.type,
         source="manual",
         external_account_id=None,
+        balance=account.balance,
         currency_code=None,
         created_at=int(time.time())
     )
@@ -193,6 +194,7 @@ def mono_sync_accounts(request_id: str,
             type=acc.get("type"),
             source="mono",
             external_account_id=acc.get("id"),
+            balance=acc.get("balance")/100,
             currency_code=acc.get("currencyCode"),
             created_at=int(time.time())
         ))

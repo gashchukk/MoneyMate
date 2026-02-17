@@ -24,7 +24,8 @@ class Account(Base):
     # cash / credit_card / mono / savings
     source = Column(String, nullable=False)  
     # manual / mono
-    external_account_id = Column(String, nullable=True)  
+    external_account_id = Column(String, nullable=True)
+    balance = Column(Float, nullable=True)
     # mono account id (NULL for manual)
     currency_code = Column(Integer, nullable=True)
     created_at = Column(Integer, nullable=False)

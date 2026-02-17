@@ -22,6 +22,7 @@ class UserResponse(BaseModel):
 class AccountCreate(BaseModel):
     name: str
     type: str
+    balance: float
 
 class AccountResponse(BaseModel):
     id: int
@@ -29,6 +30,7 @@ class AccountResponse(BaseModel):
     type: str
     source: str
     external_account_id: Optional[str]
+    balance: float
     currency_code: Optional[int]
 
     class Config:
