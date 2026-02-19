@@ -2,14 +2,14 @@
 
 # dependencies
 node_modules/
-/legacy/
+legacy/
 private.key
 __pycache__
 .venv
 app.db 
 app.db-shm
 app.db-wal
-/mono_api_test/
+mono_api_test/
 # Expo
 .expo/
 dist/

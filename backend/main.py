@@ -68,7 +68,7 @@ def create_account(account: schemas.AccountCreate,
         source="manual",
         external_account_id=None,
         balance=account.balance,
-        currency_code=None,
+        currency_code=account.currency_code,
         created_at=int(time.time())
     )
 
@@ -83,6 +83,36 @@ def get_accounts(db: Session = Depends(get_db),
                  user_id: int = Depends(get_current_user)):
     return db.query(models.Account).filter_by(user_id=user_id).all()
 
+@app.put("/accounts/{account_id}", response_model=schemas.AccountResponse)
+def update_account(account_id: int,
+                   account: schemas.AccountUpdate,
+                   db: Session = Depends(get_db),
+                   user_id: int = Depends(get_current_user)):
+
+    acc = db.query(models.Account).filter(
+        models.Account.id == account_id,
+        models.Account.user_id == user_id
+    ).first()
+
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if account.name is not None:
+        acc.name = account.name
+
+    if account.type is not None:
+        acc.type = account.type
+
+    if account.balance is not None:
+        acc.balance = account.balance
+
+    if account.currency_code is not None:
+        acc.currency_code = account.currency_code
+
+    db.commit()
+    db.refresh(acc)
+
+    return acc
 
 @app.delete("/accounts/{account_id}")
 def delete_account(account_id: int,
@@ -122,7 +152,7 @@ def add_manual_transaction(
         user_id=user_id,
         account_id=transaction.account_id,
         external_tx_id=None,
-        time=datetime.datetime.fromtimestamp(transaction.time) if isinstance(transaction.time, int) else transaction.time,
+        time=transaction.time,
         description=transaction.description,
         mcc=transaction.mcc,
         amount=transaction.amount,
@@ -130,11 +160,44 @@ def add_manual_transaction(
         source="manual",
         created_at=int(time.time())
     )
+
+    account.balance += transaction.amount
     db.add(new_tx)
     db.commit()
     db.refresh(new_tx)
+    db.refresh(account)
 
     return new_tx
+
+@app.put("/transactions/{transaction_id}", response_model=schemas.TransactionResponse)
+def update_transaction(
+    transaction_id: int,
+    transaction: schemas.TransactionUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user)
+):
+    tx = db.query(models.Transaction).filter_by(id=transaction_id, user_id=user_id).first()
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+
+    tx.description = transaction.description
+    tx.amount = transaction.amount
+    tx.mcc = transaction.mcc
+    tx.currency_code = transaction.currency_code
+
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+@app.delete("/transactions/{transaction_id}")
+def delete_transaction(transaction_id: int, db: Session = Depends(get_db), user_id: int = Depends(get_current_user)):
+    tx = db.query(models.Transaction).filter_by(id=transaction_id, user_id=user_id).first()
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+    db.delete(tx)
+    db.commit()
+    return {"status": "deleted"}
+
 # ----------------------
 # MONO BANK INTEGRATION
 # ----------------------
@@ -161,43 +224,41 @@ def auth_request(db: Session = Depends(get_db),
     return data
 
 
-# @app.get("/mono/auth/status/{request_id}")
-# def auth_status(request_id: str, db: Session = Depends(get_db)):
-#     resp = monobank.mono_check_status(request_id)
-#     account = db.query(models.Account).filter_by(external_account_id=request_id).first()
-#     if not account:
-#         raise HTTPException(404, "Integration not found")
-#     if resp.status_code == 200:
-#         account.type = "mono_granted"
-#         db.commit()
-#     return {"status_code": resp.status_code}
-
-
 @app.post("/mono/sync-accounts")
 def mono_sync_accounts(request_id: str,
                        db: Session = Depends(get_db),
                        user_id: int = Depends(get_current_user)):
-    """
-    Sync all Mono accounts for a user into Accounts table.
-    request_id is provided after auth request.
-    """
     resp = monobank.mono_client_info(request_id)
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, resp.text)
 
     info = resp.json()
+    mono_account_ids = [acc.get("id") for acc in info["accounts"]]
+
     for acc in info["accounts"]:
-        # Add new account
-        db.add(models.Account(
+        existing = db.query(models.Account).filter_by(
             user_id=user_id,
-            name=acc.get("type") + "card",
-            type=acc.get("type"),
-            source="mono",
-            external_account_id=acc.get("id"),
-            balance=acc.get("balance")/100,
-            currency_code=acc.get("currencyCode"),
-            created_at=int(time.time())
-        ))
+            external_account_id=acc.get("id")
+        ).first()
+
+        if existing:
+            # Update balance and name in place
+            existing.balance = acc.get("balance") / 100
+            existing.currency_code = acc.get("currencyCode")
+            existing.name = acc.get("type") + "card"
+            existing.type = acc.get("type")
+        else:
+            # New account from Mono — add it
+            db.add(models.Account(
+                user_id=user_id,
+                name=acc.get("type") + "card",
+                type=acc.get("type"),
+                source="mono",
+                external_account_id=acc.get("id"),
+                balance=acc.get("balance") / 100,
+                currency_code=acc.get("currencyCode"),
+                created_at=int(time.time())
+            ))
 
     db.commit()
     return {"status": "accounts_synced"}
@@ -208,40 +269,57 @@ def mono_sync_transactions(request_id: str,
                            db: Session = Depends(get_db),
                            user_id: int = Depends(get_current_user),
                            days: int = 30):
-    """
-    Fetch and store transactions for all Mono accounts of a user.
-    """
     accounts = db.query(models.Account)\
         .filter_by(user_id=user_id, source="mono")\
         .all()
 
-    from_ts = str(int(time.time()) - days * 86400)
-    to_ts = str(int(time.time()))
+    from_ts = int(time.time()) - days * 86400
+    to_ts = int(time.time())
 
     for acc in accounts:
-        resp = monobank.mono_statement(request_id, acc.external_account_id, from_ts, to_ts)
+        resp = monobank.mono_statement(request_id, acc.external_account_id, str(from_ts), str(to_ts))
         if resp.status_code != 200:
             continue
 
-        for tx in resp.json():
-            exists = db.query(models.Transaction)\
-                .filter_by(external_tx_id=tx["id"])\
-                .first()
-            if exists:
-                continue
+        mono_txs = resp.json()
+        mono_tx_ids = {tx["id"] for tx in mono_txs}
 
-            db.add(models.Transaction(
-                user_id=user_id,
-                account_id=acc.id,
-                external_tx_id=tx["id"],
-                time=int(tx["time"]),  # keep as int timestamp
-                description=tx.get("description"),
-                mcc=tx.get("mcc"),
-                amount=tx["amount"] / 100,
-                currency_code=tx.get("currencyCode"),
-                source="mono",
-                created_at=int(time.time())
-            ))
+        # ── Delete stale transactions in this window ──────────────────────────
+        # Remove any transaction for this account in the synced time window
+        # that is NOT present in the latest Mono response.
+        # This cleans up manual entries or outdated records within the window.
+        db.query(models.Transaction).filter(
+            models.Transaction.account_id == acc.id,
+            models.Transaction.time >= from_ts,
+            models.Transaction.time <= to_ts,
+            models.Transaction.external_tx_id.notin_(mono_tx_ids)
+        ).delete(synchronize_session=False)
+
+        # ── Upsert Mono transactions ──────────────────────────────────────────
+        for tx in mono_txs:
+            existing = db.query(models.Transaction).filter_by(
+                external_tx_id=tx["id"]
+            ).first()
+
+            if existing:
+                # Update in case amount/description changed
+                existing.amount = tx["amount"] / 100
+                existing.description = tx.get("description")
+                existing.mcc = tx.get("mcc")
+                existing.currency_code = tx.get("currencyCode")
+            else:
+                db.add(models.Transaction(
+                    user_id=user_id,
+                    account_id=acc.id,
+                    external_tx_id=tx["id"],
+                    time=int(tx["time"]),
+                    description=tx.get("description"),
+                    mcc=tx.get("mcc"),
+                    amount=tx["amount"] / 100,
+                    currency_code=tx.get("currencyCode"),
+                    source="mono",
+                    created_at=int(time.time())
+                ))
 
     db.commit()
     return {"status": "transactions_synced"}

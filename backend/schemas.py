@@ -23,6 +23,7 @@ class AccountCreate(BaseModel):
     name: str
     type: str
     balance: float
+    currency_code : int
 
 class AccountResponse(BaseModel):
     id: int
@@ -36,6 +37,12 @@ class AccountResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class AccountUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    balance: Optional[float] = None
+    currency_code: Optional[str] = None
 # ---------- TRANSACTION SCHEMAS ----------
 class Transaction(BaseModel):
     id: int
@@ -77,3 +84,10 @@ class TransactionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class TransactionUpdate(BaseModel):
+    description: Optional[str] = None
+    amount: float
+    account_id: int
+    time: int
+    mcc: Optional[int] = 0
+    currency_code: Optional[int] = None
