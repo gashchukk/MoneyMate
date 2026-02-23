@@ -52,8 +52,23 @@ const mccLabel = (mcc: number) => {
 
 const SOURCE_ICON: Record<string, string> = { mono: '🟡', manual: '✏️' };
 const TYPE_ICON: Record<string, string> = {
-  black: '🖤', white: '🤍', platinum: '🔘',
-  iron: '⚙️', fop: '🏢', yellow: '💛', eAid: '🟢',
+  black: '🖤',
+  white: '🤍',
+  platinum: '🔘',
+  iron: '⚙️',
+  fop: '🏢',
+  yellow: '💛',
+  eAid: '🟢',
+
+  cash: '💵',
+  creditCard: '💳',
+  debitCard: '💳',
+  savings: '🏦',
+  prepaid: '🧾',        // Передоплата → Prepaid
+  investments: '📈',
+  loan: '📉',
+  credit: '💰',
+  other: '📦',
 };
 
 function txDate(time: number) {

@@ -55,6 +55,7 @@ class Transaction(BaseModel):
     amount: float
     currency_code: int
     source: str
+    category: str
     created_at: int
 
     class Config:
@@ -66,6 +67,7 @@ class TransactionCreate(BaseModel):
     description: str
     mcc: Optional[int] = None
     amount: float
+    category: str
     currency_code: Optional[int] = None
 
 class TransactionResponse(BaseModel):
@@ -79,6 +81,7 @@ class TransactionResponse(BaseModel):
     amount: float
     currency_code: int
     source: str
+    category: str
     created_at: int
 
     class Config:

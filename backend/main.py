@@ -158,6 +158,7 @@ def add_manual_transaction(
         amount=transaction.amount,
         currency_code=transaction.currency_code if transaction.currency_code != None else account.currency_code,  # use account's currency
         source="manual",
+        category=transaction.category,
         created_at=int(time.time())
     )
 
@@ -201,6 +202,23 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), user_
 # ----------------------
 # MONO BANK INTEGRATION
 # ----------------------
+import json, os
+
+with open("mcc.json", "r", encoding="utf-8") as f:
+    _MCC_LIST = json.load(f)
+
+# Build a dict for O(1) lookup: "5411" -> {"uk": "...", "en": "..."}
+MCC_MAP: dict[str, dict] = {
+    item["mcc"]: item["shortDescription"]
+    for item in _MCC_LIST
+}
+
+def mcc_to_category(mcc: int | None) -> str | None:
+    """Returns the English short description for a given MCC code, or None."""
+    if mcc is None:
+        return None
+    return MCC_MAP.get(str(mcc).zfill(4), {}).get("en", None)
+
 
 @app.post("/mono/auth/request")
 def auth_request(db: Session = Depends(get_db),
@@ -233,7 +251,6 @@ def mono_sync_accounts(request_id: str,
         raise HTTPException(resp.status_code, resp.text)
 
     info = resp.json()
-    mono_account_ids = [acc.get("id") for acc in info["accounts"]]
 
     for acc in info["accounts"]:
         existing = db.query(models.Account).filter_by(
@@ -242,13 +259,11 @@ def mono_sync_accounts(request_id: str,
         ).first()
 
         if existing:
-            # Update balance and name in place
             existing.balance = acc.get("balance") / 100
             existing.currency_code = acc.get("currencyCode")
             existing.name = acc.get("type") + "card"
             existing.type = acc.get("type")
         else:
-            # New account from Mono — add it
             db.add(models.Account(
                 user_id=user_id,
                 name=acc.get("type") + "card",
@@ -284,10 +299,6 @@ def mono_sync_transactions(request_id: str,
         mono_txs = resp.json()
         mono_tx_ids = {tx["id"] for tx in mono_txs}
 
-        # ── Delete stale transactions in this window ──────────────────────────
-        # Remove any transaction for this account in the synced time window
-        # that is NOT present in the latest Mono response.
-        # This cleans up manual entries or outdated records within the window.
         db.query(models.Transaction).filter(
             models.Transaction.account_id == acc.id,
             models.Transaction.time >= from_ts,
@@ -295,18 +306,19 @@ def mono_sync_transactions(request_id: str,
             models.Transaction.external_tx_id.notin_(mono_tx_ids)
         ).delete(synchronize_session=False)
 
-        # ── Upsert Mono transactions ──────────────────────────────────────────
         for tx in mono_txs:
+            category = mcc_to_category(tx.get("mcc"))  # ← resolve here
+
             existing = db.query(models.Transaction).filter_by(
                 external_tx_id=tx["id"]
             ).first()
 
             if existing:
-                # Update in case amount/description changed
                 existing.amount = tx["amount"] / 100
                 existing.description = tx.get("description")
                 existing.mcc = tx.get("mcc")
                 existing.currency_code = tx.get("currencyCode")
+                existing.category = category             # ← update on resync too
             else:
                 db.add(models.Transaction(
                     user_id=user_id,
@@ -318,6 +330,7 @@ def mono_sync_transactions(request_id: str,
                     amount=tx["amount"] / 100,
                     currency_code=tx.get("currencyCode"),
                     source="mono",
+                    category=category,                   # ← set on insert
                     created_at=int(time.time())
                 ))
 

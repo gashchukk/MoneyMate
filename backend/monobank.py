@@ -29,22 +29,7 @@ def mono_request_access():
         "X-Time": x_time,
         "X-Sign": sign_path(path, x_time),
     }
-
     return requests.post(BASE_URL + path, headers=headers)
-
-
-def mono_check_status(request_id: str):
-    path = "/personal/auth/request"
-    x_time = str(int(time.time()))
-
-    headers = {
-        "X-Key-Id": KEY_ID,
-        "X-Time": x_time,
-        "X-Request-Id": request_id,
-        "X-Sign": sign_path(path, x_time, request_id),
-    }
-
-    return requests.get(BASE_URL + path, headers=headers)
 
 
 def mono_client_info(request_id: str):

@@ -14,7 +14,7 @@ interface Props {
   onCreated: () => void;
 }
 
-const ACCOUNT_TYPES = ['black', 'white', 'platinum', 'iron', 'fop', 'yellow', 'eAid'];
+const ACCOUNT_TYPES = ["cash", "creditCard", "debitCard", "savings", "prepaid", "investments", "loan", "creadit", "other"];
 const CURRENCIES = [
   { code: 980, label: '₴ UAH' },
   { code: 840, label: '$ USD' },

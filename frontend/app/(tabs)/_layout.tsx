@@ -1,8 +1,10 @@
 import { Tabs } from 'expo-router';
+import { Text, View } from 'react-native';
 import { AppProvider, useAppSettings, t } from '@/components/AppContext';
 
 function TabsWithContext() {
   const { language } = useAppSettings();
+
   return (
     <Tabs
       screenOptions={{
@@ -18,7 +20,7 @@ function TabsWithContext() {
           paddingTop: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
         },
       }}
@@ -27,8 +29,17 @@ function TabsWithContext() {
         name="index"
         options={{
           title: t('transactions', language),
-          tabBarIcon: ({ color }) => (
-            <TabIcon emoji="💳" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon emoji="💳" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: 'Analytics',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon emoji="📊" focused={focused} />
           ),
         }}
       />
@@ -36,8 +47,8 @@ function TabsWithContext() {
         name="accounts"
         options={{
           title: t('accounts', language),
-          tabBarIcon: ({ color }) => (
-            <TabIcon emoji="🏦" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon emoji="🏦" focused={focused} />
           ),
         }}
       />
@@ -45,8 +56,8 @@ function TabsWithContext() {
         name="settings"
         options={{
           title: t('settings', language),
-          tabBarIcon: ({ color }) => (
-            <TabIcon emoji="⚙️" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon emoji="⚙️" focused={focused} />
           ),
         }}
       />
@@ -54,10 +65,9 @@ function TabsWithContext() {
   );
 }
 
-function TabIcon({ emoji, color }: { emoji: string; color: string }) {
-  const { Text, View } = require('react-native');
+function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return (
-    <View style={{ opacity: color === '#8B1A1A' ? 1 : 0.4 }}>
+    <View style={{ opacity: focused ? 1 : 0.4 }}>
       <Text style={{ fontSize: 22 }}>{emoji}</Text>
     </View>
   );

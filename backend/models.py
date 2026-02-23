@@ -45,6 +45,7 @@ class Transaction(Base):
     mcc = Column(Integer, nullable=True)
     amount = Column(Float, nullable=False)
     currency_code = Column(Integer, nullable=False)
-    source = Column(String, nullable=False)  
+    source = Column(String, nullable=False)
+    category = Column(String, nullable=False)  
     # manual / mono
     created_at = Column(Integer, nullable=False)

@@ -26,8 +26,23 @@ const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
 const SYSTEM_SYMBOL: Record<Currency, string> = { UAH: '₴', USD: '$', EUR: '€' };
 const SOURCE_ICON: Record<string, string> = { mono: '🟡', manual: '✏️', default: '🏦' };
 const TYPE_ICON: Record<string, string> = {
-  black: '🖤', white: '🤍', platinum: '🔘',
-  iron: '⚙️', fop: '🏢', yellow: '💛', eAid: '🟢',
+  black: '🖤',
+  white: '🤍',
+  platinum: '🔘',
+  iron: '⚙️',
+  fop: '🏢',
+  yellow: '💛',
+  eAid: '🟢',
+
+  cash: '💵',
+  creditCard: '💳',
+  debitCard: '💳',
+  savings: '🏦',
+  prepaid: '🧾',        // Передоплата → Prepaid
+  investments: '📈',
+  loan: '📉',
+  credit: '💰',
+  other: '📦',
 };
 
 function convertToSystem(amount: number, fromCode: number, sys: Currency, rates: ExchangeRates): number | null {

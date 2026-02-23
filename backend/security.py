@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-SECRET_KEY = "super-secret-key"  # put in env vars!
+SECRET_KEY = "super-secret-key" 
 ALGORITHM = "HS256"
 security = HTTPBearer()
 
