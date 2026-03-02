@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-export const API_BASE_URL = 'http://192.168.31.16:8000'; // 🔁 Replace
+export const API_BASE_URL = 'http://192.168.31.199:8000'; // 🔁 Replace
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const token = await SecureStore.getItemAsync('access_token');

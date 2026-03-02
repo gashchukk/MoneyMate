@@ -172,7 +172,12 @@ export default function AccountsScreen() {
                 <View style={styles.accountRight}>
                   <View style={styles.accountBalanceRow}>
                     <View>
-                      <Text style={styles.accountBalance}>
+                      <Text
+                        style={[
+                          styles.accountBalance,
+                          (acc.balance ?? 0) < 0 && { color: NEGATIVE }
+                        ]}
+                      >
                         {currencySymbol(acc.currency_code)}{(acc.balance ?? 0).toFixed(2)}
                       </Text>
                       {approx !== null && (
@@ -200,6 +205,7 @@ export default function AccountsScreen() {
 }
 
 const BRAND = '#8B1A1A';
+const NEGATIVE = '#D32F2F'; // clean red
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },
   content: { paddingBottom: 40 },
