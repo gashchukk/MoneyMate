@@ -5,6 +5,7 @@ node_modules/
 legacy/
 private.key
 __pycache__
+.env
 .venv
 .vscode
 app.db 
