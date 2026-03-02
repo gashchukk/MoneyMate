@@ -8,6 +8,10 @@ import schemas
 from auth import hash_password, verify_password
 from security import create_token, get_current_user
 import monobank
+from fastapi import UploadFile, File, Form
+from google.cloud import vision as gvision
+from receipt_parser import parse_receipt
+import os, uuid
 
 # create tables if not exists
 Base.metadata.create_all(bind=engine)
@@ -336,3 +340,94 @@ def mono_sync_transactions(request_id: str,
 
     db.commit()
     return {"status": "transactions_synced"}
+
+
+_vision_client = gvision.ImageAnnotatorClient()
+
+
+@app.post("/receipts/scan", response_model=schemas.ReceiptImageOut)
+async def scan_receipt(
+    file: UploadFile = File(...),
+    account_id: int  = Form(...),
+    db: Session      = Depends(get_db),
+    user_id: int     = Depends(get_current_user),
+):
+    contents = await file.read()
+
+    # OCR
+    gv_image  = gvision.Image(content=contents)
+    response  = _vision_client.text_detection(image=gv_image)
+    if response.error.message:
+        raise HTTPException(400, f"Vision API error: {response.error.message}")
+
+    annotations = response.text_annotations
+    raw_text = annotations[0].description if annotations else ""
+
+    # Gemini parse
+    parsed = parse_receipt(raw_text)
+    total  = parsed.get("total")
+
+    # Verify account
+    account = db.query(models.Account).filter_by(id=account_id, user_id=user_id).first()
+    if not account:
+        raise HTTPException(404, "Account not found")
+
+    # Create transaction
+    tx_id = None
+    if total and total > 0:
+        tx = models.Transaction(
+        user_id=user_id,
+        account_id=account_id,
+        external_tx_id=None,
+        time=parsed.get("time") or int(time.time()),
+        description=parsed.get("description") or parsed.get("store") or file.filename,
+        mcc=parsed.get("mcc", 5411),
+        amount=-total,
+        currency_code=parsed.get("currency_code", account.currency_code),
+        source="receipt",
+        category=parsed.get("category", "Groceries"),
+        created_at=int(time.time())
+    )
+    db.add(tx)
+    db.flush()
+    tx_id = tx.id
+
+    # ── Deduct from account balance ────────────────────────────────────────
+    account.balance = (account.balance or 0) - total
+
+    receipt = models.ReceiptImage(
+        user_id=user_id,
+        transaction_id=tx_id,
+        filename=file.filename,
+        raw_text=raw_text,
+        parsed_data=parsed,
+        created_at=int(time.time()),
+    )
+    db.add(receipt)
+    db.flush()
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+@app.get("/receipts", response_model=list[schemas.ReceiptImageOut])
+def list_receipts(
+    db: Session  = Depends(get_db),
+    user_id: int = Depends(get_current_user),
+):
+    return db.query(models.ReceiptImage).filter_by(user_id=user_id)\
+             .order_by(models.ReceiptImage.created_at.desc()).all()
+
+
+@app.get("/receipts/{receipt_id}", response_model=schemas.ReceiptImageOut)
+def get_receipt(
+    receipt_id: int,
+    db: Session  = Depends(get_db),
+    user_id: int = Depends(get_current_user),
+):
+    receipt = db.query(models.ReceiptImage).filter_by(
+        id=receipt_id, user_id=user_id
+    ).first()
+    if not receipt:
+        raise HTTPException(404, "Receipt not found")
+    return receipt

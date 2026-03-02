@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Text, JSON
 from database import Base
-
 
 
 class User(Base):
@@ -49,3 +48,15 @@ class Transaction(Base):
     category = Column(String, nullable=False)  
     # manual / mono
     created_at = Column(Integer, nullable=False)
+
+
+class ReceiptImage(Base):
+    __tablename__ = "receipt_images"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id"), nullable=False)
+    transaction_id  = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    filename        = Column(String, nullable=True)
+    raw_text        = Column(Text, nullable=True)          # full OCR dump
+    parsed_data     = Column(JSON, nullable=True)          # structured JSON
+    created_at      = Column(Integer, nullable=False)

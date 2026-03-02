@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-
+from typing import Optional, Any
 # ---------- USER SCHEMAS ----------
 class UserCreate(BaseModel):
     email: EmailStr
@@ -94,3 +94,12 @@ class TransactionUpdate(BaseModel):
     time: int
     mcc: Optional[int] = 0
     currency_code: Optional[int] = None
+
+class ReceiptImageOut(BaseModel):
+    id: int
+    transaction_id: Optional[int]
+    filename: Optional[str]
+    raw_text: Optional[str]
+    parsed_data: Optional[Any]
+    created_at: int
+    class Config: from_attributes = True

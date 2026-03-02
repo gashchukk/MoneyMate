@@ -3,3 +3,9 @@ uvicorn
 requests
 ecdsa
 sqlalchemy
+pydantic[email]
+passlib
+PyJWT
+google-cloud-vision>=3.4.0
+bcrypt
+google-generativeai>=0.7.0
