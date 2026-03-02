@@ -5,7 +5,8 @@ node_modules/
 legacy/
 private.key
 __pycache__
-.env
+backend/data/gen-lang-client-0123101752-9c051c45c58a.json
+backend/.env
 .venv
 .vscode
 app.db 
