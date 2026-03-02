@@ -3,11 +3,12 @@ from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY") 
 ALGORITHM = os.getenv("ALGORITHM")
 security = HTTPBearer()
-
 def create_token(user_id: int) -> str:
     payload = {
         "user_id": user_id,
