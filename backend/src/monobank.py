@@ -1,11 +1,12 @@
+import os
 import time
 import base64
 import hashlib
 import requests
 import ecdsa
 
-KEY_ID = "cdfd50b0df1d48b86895a73eba85b4a9d92504b2"
-PRIVATE_KEY_PEM = open("./private.key").read()
+KEY_ID = os.getenv("MONOBANK_KEY_ID")
+PRIVATE_KEY_PEM = open("./data/private.key").read()
 BASE_URL = "https://api.monobank.ua"
 
 

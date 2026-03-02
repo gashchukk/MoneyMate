@@ -2,9 +2,10 @@ import jwt
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import os
 
-SECRET_KEY = "super-secret-key" 
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY") 
+ALGORITHM = os.getenv("ALGORITHM")
 security = HTTPBearer()
 
 def create_token(user_id: int) -> str:

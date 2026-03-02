@@ -7,8 +7,11 @@ from typing import Optional
 import google.generativeai as genai
 
 # ── Init Gemini ───────────────────────────────────────────────────────────────
-genai.configure(api_key="AIzaSyDrBjI2W3kOXocgHZD18V10_eWeoyyYgpo")
-_model = genai.GenerativeModel("models/gemini-flash-lite-latest")
+API_KEY = os.getenv("GOOGLE_API_KEY")
+MODEL = os.getenv("GENAI_MODEL", "models/gemini-flash-lite-latest")
+
+genai.configure(api_key=API_KEY)
+_model = genai.GenerativeModel(MODEL)
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """

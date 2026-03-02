@@ -95,6 +95,9 @@ class TransactionUpdate(BaseModel):
     mcc: Optional[int] = 0
     currency_code: Optional[int] = None
 
+# ---------- RECEIPT SCAN SCHEMAS ----------
+
+
 class ReceiptImageOut(BaseModel):
     id: int
     transaction_id: Optional[int]

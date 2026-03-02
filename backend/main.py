@@ -1,18 +1,19 @@
 import time
-import datetime
-from fastapi import FastAPI, HTTPException, Depends
+import json
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from database import get_db, engine, Base
-import models
-import schemas
-from auth import hash_password, verify_password
-from security import create_token, get_current_user
-import monobank
-from fastapi import UploadFile, File, Form
 from google.cloud import vision as gvision
-from receipt_parser import parse_receipt
-import os, uuid
 
+import src.monobank as monobank
+import src.models as models
+import src.schemas as schemas
+from src.receipt_parser import parse_receipt
+from src.database import get_db, engine, Base
+from src.auth import hash_password, verify_password
+from src.security import create_token, get_current_user
+from dotenv import load_dotenv
+
+load_dotenv()
 # create tables if not exists
 Base.metadata.create_all(bind=engine)
 
@@ -206,9 +207,8 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db), user_
 # ----------------------
 # MONO BANK INTEGRATION
 # ----------------------
-import json, os
 
-with open("mcc.json", "r", encoding="utf-8") as f:
+with open("./data/mcc.json", "r", encoding="utf-8") as f:
     _MCC_LIST = json.load(f)
 
 # Build a dict for O(1) lookup: "5411" -> {"uk": "...", "en": "..."}

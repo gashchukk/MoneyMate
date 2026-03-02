@@ -237,7 +237,10 @@ Create a `.env` file in `backend/`:
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/moneymate
 SECRET_KEY=your-jwt-secret-key
-GEMINI_API_KEY=your-gemini-api-key
+ALGORITHM=hashing-alogrithm #ex.: "HS256"
+GOOGLE_API_KEY=your-gemini-api-key
+GENAI_MODEL=your-gemini-model
+MONOBANK_KEY_ID=your-monobank-access-token
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```
 
