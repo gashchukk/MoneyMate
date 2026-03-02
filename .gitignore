@@ -6,6 +6,7 @@ legacy/
 private.key
 __pycache__
 .venv
+.vscode
 app.db 
 app.db-shm
 app.db-wal
