@@ -1,21 +1,24 @@
 import jwt
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY") 
-ALGORITHM = os.getenv("ALGORITHM")
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is not set")
+
 security = HTTPBearer()
+
+
 def create_token(user_id: int) -> str:
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(hours=1)  # expires in 1 hour
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
     }
-    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    return token
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> int:
     try:

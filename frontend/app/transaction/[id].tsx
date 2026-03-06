@@ -5,31 +5,11 @@ import {
   TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t } from '@/components/AppContext';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Transaction {
-  id: number;
-  account_id: number;
-  time: number;
-  description: string;
-  amount: number;
-  currency_code: number;
-  mcc: number;
-  source: string;
-}
-
-interface Account {
-  id: number;
-  name: string;
-  currency_code: number;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
-const CURRENCY_NAMES: Record<number, string> = { 980: 'UAH', 840: 'USD', 978: 'EUR', 826: 'GBP' };
-const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
+import type { Transaction, Account } from '@/types';
+import { BRAND, currencySymbol, CURRENCY_NAMES } from '@/constants/brand';
 
 const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   grocery:    { label: 'Groceries',   icon: '🛒', color: '#27ae60', bg: '#e8f5e9' },
@@ -40,8 +20,8 @@ const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: strin
   other:      { label: 'Other',       icon: '💳', color: '#7f8c8d', bg: '#f5f5f5' },
 };
 
-function getMccCategory(mcc: number, source: string) {
-  if (mcc === 0 || source === 'manual') return MCC_CATEGORIES.manual;
+function getMccCategory(mcc: number | null, source: string) {
+  if (!mcc || mcc === 0 || source === 'manual') return MCC_CATEGORIES.manual;
   if (mcc >= 5411 && mcc <= 5499) return MCC_CATEGORIES.grocery;
   if (mcc >= 5811 && mcc <= 5814) return MCC_CATEGORIES.restaurant;
   if (mcc >= 4111 && mcc <= 4131) return MCC_CATEGORIES.transport;
@@ -64,6 +44,7 @@ export default function TransactionDetailScreen() {
 
   const [tx, setTx] = useState<Transaction | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -71,6 +52,11 @@ export default function TransactionDetailScreen() {
   // Edit form state
   const [editDesc, setEditDesc] = useState('');
   const [editAmount, setEditAmount] = useState('');
+  const [editDateTime, setEditDateTime] = useState(new Date());
+  const [editAccountId, setEditAccountId] = useState('');
+  const [editCurrencyCode, setEditCurrencyCode] = useState<number>(980);
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -84,6 +70,10 @@ export default function TransactionDetailScreen() {
       setTx(found);
       setEditDesc(found.description ?? '');
       setEditAmount(String(Math.abs(found.amount)));
+      setEditDateTime(new Date(found.time < 1e10 ? found.time * 1000 : found.time));
+      setEditAccountId(String(found.account_id));
+      setEditCurrencyCode(found.currency_code);
+      setAccounts(accs);
       const acc = accs.find((a: Account) => a.id === found.account_id);
       setAccount(acc ?? null);
     } catch (e: any) {
@@ -136,10 +126,10 @@ export default function TransactionDetailScreen() {
         body: JSON.stringify({
           description: editDesc,
           amount: newAmount,
-          account_id: tx.account_id,
-          time: tx.time,
           mcc: tx.mcc,
-          currency_code: tx.currency_code,
+          currency_code: editCurrencyCode,
+          time: Math.floor(editDateTime.getTime() / 1000),
+          account_id: parseInt(editAccountId),
         }),
       });
       setTx(updated);
@@ -194,7 +184,7 @@ export default function TransactionDetailScreen() {
           <DetailRow label="Account" value={account?.name ?? `Account #${tx.account_id}`} />
           <DetailRow label="Currency" value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
           <DetailRow label="Source" value={tx.source} capitalize />
-          {tx.mcc > 0 && <DetailRow label="MCC Code" value={String(tx.mcc)} last />}
+          {tx.mcc != null && tx.mcc > 0 && <DetailRow label="MCC Code" value={String(tx.mcc)} last />}
         </View>
 
         {/* ── Edit note for Mono transactions ── */}
@@ -228,49 +218,129 @@ export default function TransactionDetailScreen() {
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>Edit Transaction</Text>
 
-            <Text style={styles.modalLabel}>Description</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Coffee, Salary..."
-              placeholderTextColor="#bbb"
-              value={editDesc}
-              onChangeText={setEditDesc}
-            />
-
-            <Text style={styles.modalLabel}>Amount</Text>
-            <View style={[styles.amountRow, { borderColor: amountColor + '60' }]}>
-              <Text style={[styles.amountSign, { color: amountColor }]}>
-                {isExpense ? '−' : '+'}
-              </Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalLabel}>Description</Text>
               <TextInput
-                style={[styles.amountInput, { color: amountColor }]}
-                placeholder="0.00"
-                placeholderTextColor={amountColor + '40'}
-                keyboardType="numeric"
-                value={editAmount}
-                onChangeText={setEditAmount}
+                style={styles.modalInput}
+                placeholder="e.g. Coffee, Salary..."
+                placeholderTextColor="#bbb"
+                value={editDesc}
+                onChangeText={setEditDesc}
               />
-              <Text style={styles.amountCurrency}>
-                {CURRENCY_NAMES[tx.currency_code] ?? ''}
+
+              <Text style={styles.modalLabel}>Amount</Text>
+              <View style={[styles.amountRow, { borderColor: amountColor + '60' }]}>
+                <Text style={[styles.amountSign, { color: amountColor }]}>
+                  {isExpense ? '−' : '+'}
+                </Text>
+                <TextInput
+                  style={[styles.amountInput, { color: amountColor }]}
+                  placeholder="0.00"
+                  placeholderTextColor={amountColor + '40'}
+                  keyboardType="numeric"
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                />
+                <Text style={styles.amountCurrency}>
+                  {CURRENCY_NAMES[editCurrencyCode] ?? ''}
+                </Text>
+              </View>
+              <Text style={styles.signNote}>
+                {isExpense ? 'This is an expense — amount will be saved as negative.' : 'This is income — amount will be saved as positive.'}
               </Text>
-            </View>
 
-            <Text style={styles.signNote}>
-              {isExpense ? 'This is an expense — amount will be saved as negative.' : 'This is income — amount will be saved as positive.'}
-            </Text>
+              {/* Date */}
+              <Text style={styles.modalLabel}>Date</Text>
+              <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditTimePicker(false); setShowEditDatePicker(v => !v); }}>
+                <Text style={styles.pickerBtnText}>
+                  {editDateTime.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+              </TouchableOpacity>
+              {showEditDatePicker && (
+                <DateTimePicker
+                  value={editDateTime}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_, selected) => {
+                    setShowEditDatePicker(false);
+                    if (selected) {
+                      const updated = new Date(editDateTime);
+                      updated.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+                      setEditDateTime(updated);
+                    }
+                  }}
+                />
+              )}
 
-            <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEdit(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+              {/* Time */}
+              <Text style={styles.modalLabel}>Time</Text>
+              <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditDatePicker(false); setShowEditTimePicker(v => !v); }}>
+                <Text style={styles.pickerBtnText}>
+                  {editDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.65 }]}
-                onPress={handleSave}
-                disabled={saving}
-              >
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-              </TouchableOpacity>
-            </View>
+              {showEditTimePicker && (
+                <DateTimePicker
+                  value={editDateTime}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_, selected) => {
+                    setShowEditTimePicker(false);
+                    if (selected) {
+                      const updated = new Date(editDateTime);
+                      updated.setHours(selected.getHours(), selected.getMinutes());
+                      setEditDateTime(updated);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Account */}
+              <Text style={styles.modalLabel}>Account</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                {accounts.map(acc => (
+                  <TouchableOpacity
+                    key={acc.id}
+                    style={[styles.accChip, editAccountId === String(acc.id) && styles.accChipActive]}
+                    onPress={() => setEditAccountId(String(acc.id))}
+                  >
+                    <Text style={[styles.accChipText, editAccountId === String(acc.id) && styles.accChipTextActive]}>{acc.name}</Text>
+                    <Text style={[styles.accChipSub, editAccountId === String(acc.id) && styles.accChipSubActive]}>{CURRENCY_NAMES[acc.currency_code] ?? ''}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Currency */}
+              <Text style={styles.modalLabel}>Currency</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                {Object.entries(CURRENCY_NAMES).map(([code, name]) => {
+                  const numCode = parseInt(code);
+                  return (
+                    <TouchableOpacity
+                      key={code}
+                      style={[styles.accChip, editCurrencyCode === numCode && styles.accChipActive]}
+                      onPress={() => setEditCurrencyCode(numCode)}
+                    >
+                      <Text style={[styles.accChipText, editCurrencyCode === numCode && styles.accChipTextActive]}>{name}</Text>
+                      <Text style={[styles.accChipSub, editCurrencyCode === numCode && styles.accChipSubActive]}>{currencySymbol(numCode)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEdit(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.saveBtn, saving && { opacity: 0.65 }]}
+                  onPress={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -289,7 +359,6 @@ function DetailRow({ label, value, last, capitalize }: { label: string; value: s
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },
@@ -360,7 +429,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    padding: 24, paddingBottom: 48,
+    padding: 24, paddingBottom: 48, maxHeight: '90%',
   },
   handle: { width: 40, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#1a1a1a', marginBottom: 24 },
@@ -380,7 +449,18 @@ const styles = StyleSheet.create({
   amountCurrency: { fontSize: 14, fontWeight: '600', color: '#aaa' },
   signNote: { fontSize: 12, color: '#aaa', marginBottom: 24, marginLeft: 2 },
 
-  modalBtns: { flexDirection: 'row', gap: 12 },
+  pickerBtn: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },
+  pickerBtnText: { fontSize: 15, color: '#1a1a1a' },
+
+  chipScroll: { marginBottom: 16 },
+  accChip: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#f0f0f0', marginRight: 8, alignItems: 'center', minWidth: 72 },
+  accChipActive: { backgroundColor: BRAND },
+  accChipText: { fontSize: 13, fontWeight: '700', color: '#444' },
+  accChipTextActive: { color: '#fff' },
+  accChipSub: { fontSize: 10, color: '#999', marginTop: 2, fontWeight: '600' },
+  accChipSubActive: { color: 'rgba(255,255,255,0.7)' },
+
+  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
   cancelBtn: {
     flex: 1, borderRadius: 14, paddingVertical: 15,
     borderWidth: 1.5, borderColor: '#e0e0e0', alignItems: 'center',

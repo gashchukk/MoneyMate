@@ -6,37 +6,14 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
+import type { Transaction, Account } from '@/types';
+import { BRAND, CATEGORY_COLORS, currencySymbol } from '@/constants/brand';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BAR_CHART_WIDTH = SCREEN_WIDTH - 64;
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Transaction {
-  id: number;
-  account_id: number;
-  time: number;
-  description: string;
-  amount: number;
-  currency_code: number;
-  mcc: number;
-  source: string;
-  category?: string | null;
-}
-
-interface Account {
-  id: number;
-  name: string;
-  currency_code: number;
-  balance?: number;
-}
-
 type Period = '7d' | '30d' | '3m' | '6m' | '1y' | 'all';
 type ViewTab = 'overview' | 'categories' | 'trends' | 'accounts';
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
-const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: '7d',  label: '7D' },
@@ -53,19 +30,6 @@ const VIEW_TABS: { key: ViewTab; label: string; icon: string }[] = [
   { key: 'trends',     label: 'Trends',     icon: '📈' },
   { key: 'accounts',   label: 'Accounts',   icon: '🏦' },
 ];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  'Food & Drink':  '#e67e22',
-  'Groceries':     '#27ae60',
-  'Transport':     '#2980b9',
-  'Health':        '#e91e63',
-  'Shopping':      '#9b59b6',
-  'Entertainment': '#f39c12',
-  'Housing':       '#16a085',
-  'Salary':        '#2ecc71',
-  'Transfer':      '#95a5a6',
-  'Other':         '#7f8c8d',
-};
 
 const PALETTE = [
   '#8B1A1A','#e67e22','#27ae60','#2980b9','#9b59b6',
@@ -451,9 +415,9 @@ export default function AnalyticsScreen() {
               </View>
 
               {/* Category cards */}
-              {categorySlices.map((cat, i) => (
+              {categorySlices.map((cat, i) => [
                 <TouchableOpacity
-                  key={i}
+                  key={`cat-${i}`}
                   style={[styles.catCard, selectedCategory === cat.label && { borderColor: cat.color, borderWidth: 2 }]}
                   onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
                   activeOpacity={0.75}
@@ -471,36 +435,35 @@ export default function AnalyticsScreen() {
                       {expenses.filter(tx => (tx.category ?? 'Other') === cat.label).length} tx
                     </Text>
                   </View>
-                </TouchableOpacity>
-              ))}
-
-              {/* Selected category drill-down */}
-              {selectedCategory && catFiltered.length > 0 && (
-                <View style={styles.card}>
-                  <View style={styles.drillHeader}>
-                    <Text style={styles.cardTitle}>{selectedCategory} — Transactions</Text>
-                    <TouchableOpacity onPress={() => setSelectedCategory(null)}>
-                      <Text style={styles.drillClose}>✕ Clear</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {catFiltered.slice(0, 10).map((tx, i) => (
-                    <View key={tx.id} style={[styles.topRow, i < Math.min(catFiltered.length, 10) - 1 && styles.topBorder]}>
-                      <View style={styles.topMid}>
-                        <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
-                        <Text style={styles.topMeta}>
-                          {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </TouchableOpacity>,
+                selectedCategory === cat.label && catFiltered.length > 0 && (
+                  <View key={`drill-${i}`} style={styles.card}>
+                    <View style={styles.drillHeader}>
+                      <Text style={styles.cardTitle}>{selectedCategory} — Transactions</Text>
+                      <TouchableOpacity onPress={() => setSelectedCategory(null)}>
+                        <Text style={styles.drillClose}>✕ Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {catFiltered.slice(0, 10).map((tx, idx) => (
+                      <View key={tx.id} style={[styles.topRow, idx < Math.min(catFiltered.length, 10) - 1 && styles.topBorder]}>
+                        <View style={styles.topMid}>
+                          <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
+                          <Text style={styles.topMeta}>
+                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </Text>
+                        </View>
+                        <Text style={[styles.topAmount, tx.amount < 0 ? { color: '#c0392b' } : { color: '#27ae60' }]}>
+                          {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
                         </Text>
                       </View>
-                      <Text style={[styles.topAmount, tx.amount < 0 ? { color: '#c0392b' } : { color: '#27ae60' }]}>
-                        {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                      </Text>
-                    </View>
-                  ))}
-                  {catFiltered.length > 10 && (
-                    <Text style={styles.moreText}>+{catFiltered.length - 10} more transactions</Text>
-                  )}
-                </View>
-              )}
+                    ))}
+                    {catFiltered.length > 10 && (
+                      <Text style={styles.moreText}>+{catFiltered.length - 10} more transactions</Text>
+                    )}
+                  </View>
+                )
+              ])}
+
             </>
           )}
         </>

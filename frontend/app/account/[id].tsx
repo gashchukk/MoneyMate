@@ -7,33 +7,11 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t } from '@/components/AppContext';
 import EditAccountModal from '@/components/EditAccountModal';
+import type { Account, Transaction } from '@/types';
+import { BRAND, currencySymbol } from '@/constants/brand';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Account {
-  id: number;
-  name: string;
-  type: string;
-  source: string;
-  currency_code: number;
-  balance?: number;
-}
-
-interface Transaction {
-  id: number;
-  account_id: number;
-  time: number;
-  description: string;
-  amount: number;
-  currency_code: number;
-  mcc: number;
-  source: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
-const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
-
-const mccColor = (mcc: number) => {
+const mccColor = (mcc: number | null) => {
+  if (!mcc) return '#f9f9f9';
   if (mcc >= 5411 && mcc <= 5499) return '#e8f5e9';
   if (mcc >= 5811 && mcc <= 5814) return '#fff3e0';
   if (mcc >= 4111 && mcc <= 4131) return '#e3f2fd';
@@ -41,12 +19,12 @@ const mccColor = (mcc: number) => {
   return '#f9f9f9';
 };
 
-const mccLabel = (mcc: number) => {
+const mccLabel = (mcc: number | null) => {
+  if (!mcc) return '💳';
   if (mcc >= 5411 && mcc <= 5499) return '🛒';
   if (mcc >= 5811 && mcc <= 5814) return '🍽️';
   if (mcc >= 4111 && mcc <= 4131) return '🚌';
   if (mcc >= 5912 && mcc <= 5999) return '💊';
-  if (mcc === 0) return '✏️';
   return '💳';
 };
 
@@ -287,7 +265,6 @@ export default function AccountDetailScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },

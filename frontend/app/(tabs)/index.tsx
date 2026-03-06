@@ -5,43 +5,18 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t } from '@/components/AppContext';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Transaction {
-  id: number;
-  account_id: number;
-  time: number;
-  description: string;
-  amount: number;
-  currency_code: number;
-  mcc: number;
-  source: string;
-  category?: string | null;
-}
-
-interface Account {
-  id: number;
-  name: string;
-  currency_code: number;
-}
+import type { Transaction, Account } from '@/types';
+import {
+  BRAND,
+  DEFAULT_CATEGORIES,
+  currencySymbol,
+  currencyName,
+} from '@/constants/brand';
 
 type TxMode = 'deposit' | 'withdrawal' | 'transfer';
-
-// ── Default categories ────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = [
-  { label: 'Food & Drink',   icon: '🍔', color: '#e67e22' },
-  { label: 'Groceries',      icon: '🛒', color: '#27ae60' },
-  { label: 'Transport',      icon: '🚌', color: '#2980b9' },
-  { label: 'Health',         icon: '💊', color: '#e91e63' },
-  { label: 'Shopping',       icon: '🛍️', color: '#9b59b6' },
-  { label: 'Entertainment',  icon: '🎬', color: '#f39c12' },
-  { label: 'Housing',        icon: '🏠', color: '#16a085' },
-  { label: 'Salary',         icon: '💰', color: '#27ae60' },
-  { label: 'Transfer',       icon: '↔️',  color: '#2980b9' },
-  { label: 'Other',          icon: '💳', color: '#7f8c8d' },
-];
 
 const CATEGORY_META: Record<string, { icon: string; color: string }> = Object.fromEntries(
   DEFAULT_CATEGORIES.map(c => [c.label, { icon: c.icon, color: c.color }])
@@ -52,15 +27,10 @@ function getCategoryMeta(cat?: string | null): { icon: string; color: string } {
   return CATEGORY_META[cat] ?? { icon: '🏷️', color: '#888' };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
-const CURRENCY_NAMES: Record<number, string> = { 980: 'UAH', 840: 'USD', 978: 'EUR', 826: 'GBP' };
-const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
-const currencyName = (code: number) => CURRENCY_NAMES[code] ?? String(code);
-
-const mccColor = (mcc: number, category?: string | null): string => {
+const mccColor = (mcc: number | null, category?: string | null): string => {
   const meta = getCategoryMeta(category);
   if (category && meta.color !== '#bbb') return meta.color + '18';
+  if (!mcc) return '#f5f5f5';
   if (mcc >= 5411 && mcc <= 5499) return '#e8f5e9';
   if (mcc >= 5811 && mcc <= 5814) return '#fff3e0';
   if (mcc >= 4111 && mcc <= 4131) return '#e3f2fd';
@@ -68,13 +38,13 @@ const mccColor = (mcc: number, category?: string | null): string => {
   return '#f5f5f5';
 };
 
-const mccLabel = (mcc: number, category?: string | null): string => {
+const mccLabel = (mcc: number | null, category?: string | null): string => {
   if (category) return getCategoryMeta(category).icon;
+  if (!mcc) return '✏️';
   if (mcc >= 5411 && mcc <= 5499) return '🛒';
   if (mcc >= 5811 && mcc <= 5814) return '🍽️';
   if (mcc >= 4111 && mcc <= 4131) return '🚌';
   if (mcc >= 5912 && mcc <= 5999) return '💊';
-  if (mcc === 0) return '✏️';
   return '💳';
 };
 
@@ -107,6 +77,8 @@ export default function TransactionsScreen() {
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const [date, setDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Custom category creation
@@ -123,6 +95,7 @@ export default function TransactionsScreen() {
     setToAccountId('');
     setCategory(null);
     setTxMode('withdrawal');
+    setDate(new Date());
     setShowNewCategory(false);
     setNewCategoryName('');
   };
@@ -172,8 +145,8 @@ export default function TransactionsScreen() {
 
     setSaving(true);
     try {
-      const now = Math.floor(Date.now() / 1000);
-      const base = { time: now, mcc: 0, currency_code: null, category };
+      const txTime = Math.floor(date.getTime() / 1000);
+      const base = { time: txTime, mcc: 0, currency_code: null, category };
 
       if (txMode === 'deposit') {
         await apiFetch('/transactions/manual', {
@@ -222,6 +195,7 @@ export default function TransactionsScreen() {
     byDay[key].push(tx);
   });
   const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+  sortedDays.forEach(day => byDay[day].sort((a, b) => b.time - a.time));
   const monthNames = language === 'uk' ? MONTH_NAMES_UK : MONTH_NAMES_EN;
   const activeModeConfig = TX_MODES.find(m => m.key === txMode)!;
 
@@ -331,6 +305,27 @@ export default function TransactionsScreen() {
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          
+              {/* Date */}
+              <Text style={styles.modalLabel}>Date</Text>
+              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(v => !v)}>
+                <Text style={styles.dateText}>
+                  {date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={new Date()}
+                  onChange={(_, selected) => {
+                    setShowDatePicker(false);
+                    if (selected) setDate(selected);
+                  }}
+                />
+              )}
+
               {/* Amount */}
               <View style={[styles.amountRow, { borderColor: activeModeConfig.color + '60' }]}>
                 <Text style={[styles.amountSign, { color: activeModeConfig.color }]}>
@@ -449,6 +444,7 @@ export default function TransactionsScreen() {
                 </>
               )}
 
+
               {/* Buttons */}
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowModal(false); resetForm(); }}>
@@ -476,7 +472,6 @@ export default function TransactionsScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },
@@ -583,4 +578,7 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#888' },
   saveBtn: { flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  dateBtn: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },
+  dateText: { fontSize: 15, color: '#1a1a1a' },
 });

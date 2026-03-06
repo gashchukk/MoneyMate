@@ -21,9 +21,18 @@
       "output": "static"
     },
     "plugins": [
-      ["expo-camera", { "cameraPermission": "MoneyMate needs camera to scan receipts." }],
-      ["expo-image-picker", { "photosPermission": "MoneyMate needs photo access to upload receipts." }],
-
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MoneyMate needs camera to scan receipts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MoneyMate needs photo access to upload receipts."
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -36,7 +45,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

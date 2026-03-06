@@ -8,21 +8,12 @@ import { apiFetch } from '@/constants/api';
 import { useAppSettings, t, Currency } from '@/components/AppContext';
 import CreateAccountModal from '@/components/CreateAccountModal';
 import { useFocusEffect } from 'expo-router';
-
-interface Account {
-  id: number;
-  name: string;
-  type: string;
-  source: string;
-  currency_code: number;
-  balance?: number;
-}
+import type { Account } from '@/types';
+import { BRAND, currencySymbol } from '@/constants/brand';
 
 interface ExchangeRates { USD: number; EUR: number; }
 
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
 const CODE_MAP: Record<number, Currency | null> = { 980: 'UAH', 840: 'USD', 978: 'EUR' };
-const currencySymbol = (code: number) => CURRENCY_SYMBOLS[code] ?? '?';
 const SYSTEM_SYMBOL: Record<Currency, string> = { UAH: '₴', USD: '$', EUR: '€' };
 const SOURCE_ICON: Record<string, string> = { mono: '🟡', manual: '✏️', default: '🏦' };
 const TYPE_ICON: Record<string, string> = {
@@ -204,7 +195,6 @@ export default function AccountsScreen() {
   );
 }
 
-const BRAND = '#8B1A1A';
 const NEGATIVE = '#D32F2F'; // clean red
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },

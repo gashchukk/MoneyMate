@@ -7,6 +7,7 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t, Currency, Language } from '@/components/AppContext';
+import { BRAND } from '@/constants/brand';
 
 export default function SettingsScreen() {
   const { currency, setCurrency, language, setLanguage } = useAppSettings();
@@ -152,7 +153,6 @@ export default function SettingsScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFA' },

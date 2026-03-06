@@ -9,11 +9,10 @@ KEY_ID = os.getenv("MONOBANK_KEY_ID")
 PRIVATE_KEY_PEM = open("./data/private.key").read()
 BASE_URL = "https://api.monobank.ua"
 
-
 def sign_message(message: bytes) -> str:
     sk = ecdsa.SigningKey.from_pem(PRIVATE_KEY_PEM, hashfunc=hashlib.sha256)
     signature = sk.sign(message)
-    return base64.b64encode(signature).decode()
+    return base64.b64encode(signature).decode('ascii')
 
 
 def sign_path(path: str, x_time: str, request_id: str | None = None) -> str:
@@ -23,7 +22,7 @@ def sign_path(path: str, x_time: str, request_id: str | None = None) -> str:
 
 def mono_request_access():
     path = "/personal/auth/request"
-    x_time = str(int(time.time()))
+    x_time = str(int(time.time())).split('.')[0]
 
     headers = {
         "X-Key-Id": KEY_ID,

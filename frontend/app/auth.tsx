@@ -14,7 +14,8 @@ import {
   Image,
   StatusBar,
 } from "react-native";
-import { API_BASE_URL } from "@/constants/api"
+import { API_BASE_URL } from '@/constants/api';
+import { BRAND, BRAND_LIGHT, BRAND_MID } from '@/constants/brand';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -120,10 +121,6 @@ export default function AuthScreen() {
     try {
       if (mode === "login") {
         const data = await apiLogin(email.trim(), password);
-        // ✅ Store token (SecureStore recommended):
-        // await SecureStore.setItemAsync("access_token", data.access_token);
-        Alert.alert("Welcome back! 👋", "You're now logged in.");
-        console.log("Token:", data.access_token);
         await SecureStore.setItemAsync('access_token', data.access_token);
         router.replace('/(tabs)');
       } else {
@@ -284,9 +281,6 @@ export default function AuthScreen() {
 }
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
-const BRAND = "#8B1A1A";       // deep crimson from logo
-const BRAND_LIGHT = "#fdf0f0"; // very soft rose tint for backgrounds
-const BRAND_MID = "#e8c5c5";   // muted rose for accents
 const BG = "#FAFAFA";
 const CARD_BG = "#FFFFFF";
 const TEXT = "#1a1a1a";

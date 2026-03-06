@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Text, View, StyleSheet } from 'react-native';
-import { AppProvider, useAppSettings, t } from '@/components/AppContext';
+import { useAppSettings, t } from '@/components/AppContext';
+import { BRAND } from '@/constants/brand';
 
 function TabsWithContext() {
   const { language } = useAppSettings();
@@ -9,7 +10,7 @@ function TabsWithContext() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#8B1A1A',
+        tabBarActiveTintColor: BRAND,
         tabBarInactiveTintColor: '#bbb',
         tabBarStyle: {
           backgroundColor: '#fff',
@@ -77,7 +78,6 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   );
 }
 
-const BRAND = '#8B1A1A';
 
 const scanBtnStyles = StyleSheet.create({
   wrapper: { alignItems: 'center', marginTop: -18 },
@@ -95,9 +95,5 @@ const scanBtnStyles = StyleSheet.create({
 });
 
 export default function TabLayout() {
-  return (
-    <AppProvider>
-      <TabsWithContext />
-    </AppProvider>
-  );
+  return <TabsWithContext />;
 }

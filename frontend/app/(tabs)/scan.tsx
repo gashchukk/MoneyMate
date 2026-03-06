@@ -10,6 +10,7 @@ import { useFocusEffect, router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import * as SecureStore from 'expo-secure-store';
 import { useAppSettings } from '@/components/AppContext';
+import { BRAND, currencySymbol } from '@/constants/brand';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -21,8 +22,7 @@ interface ReceiptResult { id: number; transaction_id?: number; filename?: string
 
 type Stage = 'camera' | 'preview' | 'account' | 'processing' | 'result';
 
-const CURRENCY_SYMBOLS: Record<number, string> = { 980: '₴', 840: '$', 978: '€', 826: '£' };
-const cs = (code: number) => CURRENCY_SYMBOLS[code] ?? '₴';
+const cs = (code: number) => currencySymbol(code);
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function ScanScreen() {
@@ -433,7 +433,6 @@ function RawTextToggle({ raw }: { raw: string }) {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-const BRAND = '#8B1A1A';
 
 const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
