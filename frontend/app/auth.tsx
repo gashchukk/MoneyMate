@@ -122,6 +122,7 @@ export default function AuthScreen() {
       if (mode === "login") {
         const data = await apiLogin(email.trim(), password);
         await SecureStore.setItemAsync('access_token', data.access_token);
+        await SecureStore.setItemAsync('refresh_token', data.refresh_token);
         router.replace('/(tabs)');
       } else {
         await apiSignup(email.trim(), password);
@@ -239,7 +240,15 @@ export default function AuthScreen() {
             )}
 
             {mode === "login" && (
-              <TouchableOpacity style={styles.forgotBtn}>
+              <TouchableOpacity
+                style={styles.forgotBtn}
+                onPress={() =>
+                  Alert.alert(
+                    "Forgot password?",
+                    "Log in and go to Settings → Change Password to update your password.",
+                  )
+                }
+              >
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </TouchableOpacity>
             )}

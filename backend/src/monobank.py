@@ -6,7 +6,17 @@ import requests
 import ecdsa
 
 KEY_ID = os.getenv("MONOBANK_KEY_ID")
-PRIVATE_KEY_PEM = open("./data/private.key").read()
+
+_default_key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "private.key")
+_key_path = os.path.abspath(os.getenv("MONOBANK_PRIVATE_KEY_PATH", _default_key_path))
+try:
+    with open(_key_path) as _f:
+        PRIVATE_KEY_PEM = _f.read()
+except FileNotFoundError:
+    raise RuntimeError(f"Monobank private key not found at: {_key_path}")
+except OSError as e:
+    raise RuntimeError(f"Failed to read Monobank private key: {e}")
+
 BASE_URL = "https://api.monobank.ua"
 
 def sign_message(message: bytes) -> str:
@@ -20,7 +30,7 @@ def sign_path(path: str, x_time: str, request_id: str | None = None) -> str:
     return sign_message(msg)
 
 
-def mono_request_access():
+def mono_request_access(webhook_url: str | None = None):
     path = "/personal/auth/request"
     x_time = str(int(time.time())).split('.')[0]
 
@@ -29,7 +39,10 @@ def mono_request_access():
         "X-Time": x_time,
         "X-Sign": sign_path(path, x_time),
     }
-    return requests.post(BASE_URL + path, headers=headers)
+    body = {}
+    if webhook_url:
+        body["webHookUrl"] = webhook_url
+    return requests.post(BASE_URL + path, headers=headers, json=body or None)
 
 
 def mono_client_info(request_id: str):

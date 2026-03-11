@@ -1,5 +1,6 @@
+import os
 import time
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 import src.monobank as monobank
@@ -7,16 +8,23 @@ import src.models as models
 from src.database import get_db
 from src.security import get_current_user
 from src.mcc import mcc_to_category
+from src.rate_limit import limiter
 
 router = APIRouter(prefix="/mono", tags=["monobank"])
 
+# Set BACKEND_URL in .env so Monobank can reach the webhook, e.g. https://yourserver.com
+_BACKEND_URL = os.getenv("BACKEND_URL", "").rstrip("/")
+
 
 @router.post("/auth/request")
+@limiter.limit("5/minute")
 def auth_request(
+    request: Request,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user),
 ):
-    resp = monobank.mono_request_access()
+    webhook_url = f"{_BACKEND_URL}/mono/webhook/{user_id}" if _BACKEND_URL else None
+    resp = monobank.mono_request_access(webhook_url=webhook_url)
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, resp.text)
 
@@ -32,6 +40,62 @@ def auth_request(
     user.mono_integration_token = token_request_id
     db.commit()
     return data
+
+
+@router.post("/webhook/{user_id}", include_in_schema=False)
+async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get_db)):
+    """
+    Called by Monobank servers when the user approves access.
+    Automatically syncs accounts and transactions for that user.
+    """
+    body = await request.json()
+    token_request_id = body.get("tokenRequestId") or body.get("requestId")
+    status = body.get("status", "")
+
+    if status.lower() not in ("approved", ""):
+        # Monobank may also call this for rejections
+        return {"status": "ignored"}
+
+    user = db.query(models.User).filter_by(id=user_id).first()
+    if not user:
+        return {"status": "user not found"}
+
+    # Use stored tokenRequestId if Monobank doesn't resend it in the webhook body
+    request_id = token_request_id or user.mono_integration_token
+    if not request_id:
+        return {"status": "no request id"}
+
+    # Sync accounts
+    info_resp = monobank.mono_client_info(request_id)
+    if info_resp.status_code == 200:
+        info = info_resp.json()
+        for acc in info.get("accounts", []):
+            existing = db.query(models.Account).filter_by(
+                user_id=user_id,
+                external_account_id=acc.get("id"),
+            ).first()
+            raw_balance = acc.get("balance")
+            balance = raw_balance / 100 if raw_balance is not None else None
+            acc_type = acc.get("type") or "unknown"
+            if existing:
+                existing.balance = balance
+                existing.currency_code = acc.get("currencyCode")
+                existing.name = acc_type + "card"
+                existing.type = acc_type
+            else:
+                db.add(models.Account(
+                    user_id=user_id,
+                    name=acc_type + "card",
+                    type=acc_type,
+                    source="mono",
+                    external_account_id=acc.get("id"),
+                    balance=balance,
+                    currency_code=acc.get("currencyCode"),
+                    created_at=int(time.time()),
+                ))
+        db.commit()
+
+    return {"status": "ok"}
 
 
 @router.post("/sync-accounts")
@@ -92,12 +156,15 @@ def mono_sync_transactions(
         mono_txs = resp.json()
         mono_tx_ids = {tx["id"] for tx in mono_txs}
 
-        db.query(models.Transaction).filter(
+        stale_txs = db.query(models.Transaction).filter(
             models.Transaction.account_id == acc.id,
             models.Transaction.time >= from_ts,
             models.Transaction.time <= to_ts,
             models.Transaction.external_tx_id.notin_(mono_tx_ids),
-        ).delete(synchronize_session=False)
+        ).all()
+        for stale in stale_txs:
+            acc.balance = (acc.balance or 0) - stale.amount
+            db.delete(stale)
 
         for tx in mono_txs:
             category = mcc_to_category(tx.get("mcc"))

@@ -21,6 +21,16 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 # ---------- ACCOUNT ----------
 
 class AccountCreate(BaseModel):
@@ -103,6 +113,30 @@ class TransactionResponse(BaseModel):
     created_at: int
 
     model_config = {"from_attributes": True}
+
+
+# ---------- CATEGORY ----------
+
+class CategoryCreate(BaseModel):
+    label: str
+    icon: str = "🏷️"
+    color: str = "#888"
+
+
+class CategoryResponse(BaseModel):
+    id: int
+    label: str
+    icon: str
+    color: str
+
+    model_config = {"from_attributes": True}
+
+
+# ---------- CHANGE PASSWORD ----------
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 # ---------- RECEIPT ----------

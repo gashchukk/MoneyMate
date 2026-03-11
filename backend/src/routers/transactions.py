@@ -70,6 +70,12 @@ def update_transaction(
     if transaction.description is not None:
         tx.description = transaction.description
     if transaction.amount is not None:
+        old_amount = tx.amount
+        account = db.query(models.Account).filter_by(
+            id=tx.account_id, user_id=user_id
+        ).first()
+        if account:
+            account.balance = (account.balance or 0) - old_amount + transaction.amount
         tx.amount = transaction.amount
     if transaction.mcc is not None:
         tx.mcc = transaction.mcc
@@ -103,6 +109,13 @@ def delete_transaction(
     ).first()
     if not tx:
         raise HTTPException(404, "Transaction not found")
+
+    account = db.query(models.Account).filter_by(
+        id=tx.account_id, user_id=user_id
+    ).first()
+    if account:
+        account.balance = (account.balance or 0) - tx.amount
+
     db.delete(tx)
     db.commit()
     return {"status": "deleted"}

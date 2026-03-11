@@ -84,7 +84,7 @@ export default function TransactionsScreen() {
   // Custom category creation
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [customCategories, setCustomCategories] = useState<{ label: string; icon: string; color: string }[]>([]);
+  const [customCategories, setCustomCategories] = useState<{ id: number; label: string; icon: string; color: string }[]>([]);
 
   const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
 
@@ -103,9 +103,14 @@ export default function TransactionsScreen() {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
-      const [txs, accs] = await Promise.all([apiFetch('/transactions'), apiFetch('/accounts')]);
+      const [txs, accs, cats] = await Promise.all([
+        apiFetch('/transactions'),
+        apiFetch('/accounts'),
+        apiFetch('/categories'),
+      ]);
       setTransactions(txs);
       setAccounts(accs);
+      setCustomCategories(cats);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -117,16 +122,23 @@ export default function TransactionsScreen() {
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
   // ── Add custom category ────────────────────────────────────────────────────
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
     if (allCategories.find(c => c.label.toLowerCase() === name.toLowerCase())) {
       Alert.alert('Already exists', 'A category with this name already exists.');
       return;
     }
-    const newCat = { label: name, icon: '🏷️', color: '#888' };
-    setCustomCategories(prev => [...prev, newCat]);
-    setCategory(name);
+    try {
+      const saved = await apiFetch('/categories', {
+        method: 'POST',
+        body: JSON.stringify({ label: name, icon: '🏷️', color: '#888' }),
+      });
+      setCustomCategories(prev => [...prev, saved]);
+      setCategory(name);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
     setNewCategoryName('');
     setShowNewCategory(false);
   };
