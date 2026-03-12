@@ -1,7 +1,10 @@
+import os
+import json
 import time
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from google.cloud import vision as gvision
+from google.oauth2 import service_account
 
 import src.models as models
 import src.schemas as schemas
@@ -21,7 +24,16 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "im
 def get_vision_client() -> gvision.ImageAnnotatorClient:
     global _vision_client
     if _vision_client is None:
-        _vision_client = gvision.ImageAnnotatorClient()
+        raw = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        if raw:
+            info = json.loads(raw)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=["https://www.googleapis.com/auth/cloud-vision"]
+            )
+            _vision_client = gvision.ImageAnnotatorClient(credentials=creds)
+        else:
+            # Fallback: use GOOGLE_APPLICATION_CREDENTIALS file path (local dev)
+            _vision_client = gvision.ImageAnnotatorClient()
     return _vision_client
 
 
