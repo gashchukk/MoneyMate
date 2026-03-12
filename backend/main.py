@@ -56,6 +56,7 @@ app.include_router(categories_router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
+@app.get("/", tags=["system"])
 @app.get("/health", tags=["system"])
 def health():
     return {"status": "ok"}
