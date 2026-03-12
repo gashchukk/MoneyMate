@@ -53,7 +53,7 @@ class AccountResponse(BaseModel):
     type: str
     source: str
     external_account_id: Optional[str] = None
-    balance: float
+    balance: Optional[float] = None
     currency_code: Optional[int] = None
 
     model_config = {"from_attributes": True}
@@ -72,7 +72,7 @@ class Transaction(BaseModel):
     amount: float
     currency_code: int
     source: str
-    category: str
+    category: Optional[str] = None
     created_at: int
 
     model_config = {"from_attributes": True}
@@ -109,7 +109,7 @@ class TransactionResponse(BaseModel):
     amount: float
     currency_code: int
     source: str
-    category: str
+    category: Optional[str] = None
     created_at: int
 
     model_config = {"from_attributes": True}

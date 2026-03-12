@@ -11,7 +11,7 @@ MCC_MAP: dict[str, dict] = {
 }
 
 
-def mcc_to_category(mcc: int | None) -> str | None:
+def mcc_to_category(mcc: int | None) -> str:
     if mcc is None:
-        return None
-    return MCC_MAP.get(str(mcc).zfill(4), {}).get("en", None)
+        return "Other"
+    return MCC_MAP.get(str(mcc).zfill(4), {}).get("en") or "Other"

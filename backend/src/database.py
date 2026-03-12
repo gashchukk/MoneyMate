@@ -1,15 +1,24 @@
 import os
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
-
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+# Supabase/PostgreSQL connection pooling settings
+# pool_size: persistent connections kept open
+# max_overflow: extra connections allowed beyond pool_size under load
+# pool_recycle: recycle connections after N seconds (avoids stale connection errors)
+# pool_pre_ping: test connection health before using it from pool
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=300,
+    pool_pre_ping=True,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

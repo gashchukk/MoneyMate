@@ -124,7 +124,17 @@ def mono_sync_accounts(
             existing.currency_code = acc.get("currencyCode")
             existing.name = acc_type + "card"
             existing.type = acc_type
-        # Removed: else add new account
+        else:
+            db.add(models.Account(
+                user_id=user_id,
+                name=acc_type + "card",
+                type=acc_type,
+                source="mono",
+                external_account_id=acc.get("id"),
+                balance=balance,
+                currency_code=acc.get("currencyCode"),
+                created_at=int(time.time()),
+            ))
 
     db.commit()
     return {"status": "accounts_synced"}
@@ -187,7 +197,7 @@ def mono_sync_transactions(
                     description=tx.get("description"),
                     mcc=tx.get("mcc"),
                     amount=tx["amount"] / 100,
-                    currency_code=tx.get("currencyCode"),
+                    currency_code=tx.get("currencyCode") or acc.currency_code,
                     source="mono",
                     category=category,
                     created_at=int(time.time()),

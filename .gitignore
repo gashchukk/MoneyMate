@@ -3,7 +3,6 @@
 # dependencies
 node_modules/
 legacy/
-private.key
 __pycache__
 backend/data/gen-lang-client-*.json
 backend/.env

@@ -4,14 +4,13 @@ import json
 import time
 import re
 from typing import Optional
-import google.generativeai as genai
+from google import genai
 
 # ── Init Gemini ───────────────────────────────────────────────────────────────
 API_KEY = os.getenv("GOOGLE_API_KEY")
-MODEL = os.getenv("GENAI_MODEL", "models/gemini-flash-lite-latest")
+MODEL = os.getenv("GENAI_MODEL", "gemini-2.0-flash-lite")
 
-genai.configure(api_key=API_KEY)
-_model = genai.GenerativeModel(MODEL)
+_client = genai.Client(api_key=API_KEY)
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """
@@ -61,7 +60,7 @@ def parse_receipt(raw_text: str) -> dict:
     prompt = f"{_SYSTEM_PROMPT}\n\nReceipt OCR text:\n\"\"\"\n{raw_text}\n\"\"\""
 
     try:
-        response = _model.generate_content(prompt)
+        response = _client.models.generate_content(model=MODEL, contents=prompt)
         text = response.text.strip()
 
         # Strip accidental markdown fences if Gemini adds them despite instructions
@@ -73,12 +72,11 @@ def parse_receipt(raw_text: str) -> dict:
             derived = _date_to_timestamp(parsed["date"])
             if derived:
                 parsed["time"] = derived
-        
+
         # Only fall back to now if we have neither
         if not parsed.get("time"):
             parsed["time"] = int(time.time())
     except json.JSONDecodeError as e:
-        # Gemini returned something unparseable — return safe fallback
         return _fallback(raw_text, error=str(e))
     except Exception as e:
         return _fallback(raw_text, error=str(e))
@@ -104,7 +102,6 @@ def _date_to_timestamp(date_str: str) -> Optional[int]:
     for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"):
         try:
             dt = datetime.datetime.strptime(date_str.strip(), fmt)
-            # Force noon UTC — never trust local timezone on a server
             dt = dt.replace(hour=12, minute=0, second=0, microsecond=0,
                             tzinfo=datetime.timezone.utc)
             return int(dt.timestamp())
@@ -129,5 +126,5 @@ def _fallback(raw_text: str, error: str = "") -> dict:
         "items":         [],
         "discount":      None,
         "raw_lines":     lines,
-        "_parse_error":  error,  # stored in parsed_data for debugging
+        "_parse_error":  error,
     }
