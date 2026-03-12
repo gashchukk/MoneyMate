@@ -4,7 +4,6 @@ requests
 ecdsa
 sqlalchemy
 pydantic[email]
-passlib
 PyJWT
 google-cloud-vision>=3.4.0
 bcrypt
