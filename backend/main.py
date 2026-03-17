@@ -1,4 +1,6 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +11,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.database import engine, Base
+import src.monobank as _monobank
 from src.rate_limit import limiter
 from src.routers.auth import router as auth_router
 from src.routers.accounts import router as accounts_router
@@ -20,7 +23,24 @@ from src.routers.categories import router as categories_router
 # Create tables on startup (use Alembic for production migrations)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="MoneyMate API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    backend_url = os.getenv("BACKEND_URL", "").rstrip("/")
+    if backend_url:
+        try:
+            webhook_url = f"{backend_url}/mono/corp/webhook"
+            resp = _monobank.mono_set_corp_webhook(webhook_url)
+            if resp.status_code == 200:
+                logging.info(f"Monobank corp webhook registered: {webhook_url}")
+            else:
+                logging.warning(f"Monobank corp webhook registration failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logging.warning(f"Monobank corp webhook registration error: {e}")
+    yield
+
+
+app = FastAPI(title="MoneyMate API", version="1.0.0", lifespan=lifespan)
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 app.state.limiter = limiter

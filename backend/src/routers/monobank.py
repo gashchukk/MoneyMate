@@ -98,6 +98,90 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
     return {"status": "ok"}
 
 
+@router.post("/corp/register-webhook")
+@limiter.limit("5/minute")
+def register_corp_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user),
+):
+    """Register the corporate transaction webhook with Monobank (one-time setup)."""
+    if not _BACKEND_URL:
+        raise HTTPException(500, "BACKEND_URL env var is not set")
+    webhook_url = f"{_BACKEND_URL}/mono/corp/webhook"
+    resp = monobank.mono_set_corp_webhook(webhook_url)
+    if resp.status_code != 200:
+        raise HTTPException(resp.status_code, resp.text)
+    return {"status": "webhook_registered", "webhook_url": webhook_url}
+
+
+@router.post("/corp/webhook", include_in_schema=False)
+async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Called by Monobank whenever a new transaction occurs on any linked card.
+    Also receives a verification ping on first registration (must return 200).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "ok"}  # verification ping with empty body
+
+    # Ignore anything that isn't a transaction event
+    if body.get("type") != "StatementItem":
+        return {"status": "ok"}
+
+    data = body.get("data", {})
+    external_account_id = data.get("account")
+    item = data.get("statementItem", {})
+
+    if not external_account_id or not item:
+        return {"status": "ignored"}
+
+    # Find the account in our DB by Monobank account ID
+    account = db.query(models.Account).filter_by(
+        external_account_id=external_account_id
+    ).first()
+    if not account:
+        return {"status": "account not found"}
+
+    tx_id = item.get("id")
+    if not tx_id:
+        return {"status": "no tx id"}
+
+    category = mcc_to_category(item.get("mcc"))
+    amount = item.get("amount", 0) / 100
+
+    existing = db.query(models.Transaction).filter_by(external_tx_id=tx_id).first()
+    if existing:
+        existing.amount = amount
+        existing.description = item.get("description")
+        existing.mcc = item.get("mcc")
+        existing.currency_code = item.get("currencyCode")
+        existing.category = category
+    else:
+        db.add(models.Transaction(
+            user_id=account.user_id,
+            account_id=account.id,
+            external_tx_id=tx_id,
+            time=int(item["time"]),
+            description=item.get("description"),
+            mcc=item.get("mcc"),
+            amount=amount,
+            currency_code=item.get("currencyCode") or account.currency_code,
+            source="mono",
+            category=category,
+            created_at=int(time.time()),
+        ))
+
+    # Keep account balance in sync from webhook payload
+    raw_balance = item.get("balance")
+    if raw_balance is not None:
+        account.balance = raw_balance / 100
+
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.post("/sync-accounts")
 def mono_sync_accounts(
     request_id: str,

@@ -1,5 +1,6 @@
 import os
 import time
+import uuid
 import base64
 import hashlib
 import requests
@@ -60,6 +61,20 @@ def mono_client_info(request_id: str):
     }
 
     return requests.get(BASE_URL + path, headers=headers)
+
+
+def mono_set_corp_webhook(webhook_url: str):
+    path = "/personal/corp/webhook"
+    x_time = str(int(time.time()))
+    request_id = str(uuid.uuid4())
+
+    headers = {
+        "X-Key-Id": KEY_ID,
+        "X-Time": x_time,
+        "X-Request-Id": request_id,
+        "X-Sign": sign_path(path, x_time, request_id),
+    }
+    return requests.post(BASE_URL + path, headers=headers, json={"webHookUrl": webhook_url})
 
 
 def mono_statement(request_id: str, account_id: str, from_ts: str, to_ts: str):
