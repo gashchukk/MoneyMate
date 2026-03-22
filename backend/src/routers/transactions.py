@@ -116,6 +116,7 @@ def delete_transaction(
     if account:
         account.balance = (account.balance or 0) - tx.amount
 
+    db.query(models.ReceiptImage).filter_by(transaction_id=tx.id).update({"transaction_id": None})
     db.delete(tx)
     db.commit()
     return {"status": "deleted"}
