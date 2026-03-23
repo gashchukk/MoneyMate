@@ -59,15 +59,35 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
     }
     setSaving(true);
     try {
+      // Save name / type / currency (no balance — driven by transactions)
       await apiFetch(`/accounts/${account.id}`, {
         method: 'PUT',
         body: JSON.stringify({
           name: name.trim(),
           type,
-          balance: parseFloat(balance) || 0,
           currency_code: currencyCode,
         }),
       });
+
+      // If balance changed, create a correction transaction for the difference
+      const newBalance = parseFloat(balance) || 0;
+      const oldBalance = account.balance ?? 0;
+      const diff = parseFloat((newBalance - oldBalance).toFixed(2));
+      if (diff !== 0) {
+        await apiFetch('/transactions/manual', {
+          method: 'POST',
+          body: JSON.stringify({
+            account_id: account.id,
+            amount: diff,
+            description: 'Balance correction',
+            category: 'Correction',
+            time: Math.floor(Date.now() / 1000),
+            mcc: 0,
+            currency_code: currencyCode,
+          }),
+        });
+      }
+
       onSaved();
     } catch (e: any) {
       Alert.alert('Error', e.message);

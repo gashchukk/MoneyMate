@@ -228,7 +228,8 @@ async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(
         existing.description = item.get("description")
         existing.mcc = item.get("mcc")
         existing.currency_code = item.get("currencyCode")
-        existing.category = category
+        if existing.category != "Transfer":
+            existing.category = category
         log.info("mono_corp_webhook: updated existing tx %s", tx_id)
     else:
         db.add(models.Transaction(
@@ -349,7 +350,9 @@ def mono_sync_transactions(
                 existing.description = tx.get("description")
                 existing.mcc = tx.get("mcc")
                 existing.currency_code = tx.get("currencyCode")
-                existing.category = category
+                # Don't override manually set Transfer category
+                if existing.category != "Transfer":
+                    existing.category = category
             else:
                 db.add(models.Transaction(
                     user_id=user_id,

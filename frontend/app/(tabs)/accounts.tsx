@@ -77,12 +77,15 @@ export default function AccountsScreen() {
     }, [fetchAll])
   );
 
-  // Personal funds = balance minus credit limit (own money, excluding credit line)
   const personalBalance = (acc: Account) => (acc.balance ?? 0) - (acc.credit_limit ?? 0);
 
-  const totalBalance = accounts.reduce((sum, acc) => {
-    return sum + (convertToSystem(personalBalance(acc), acc.currency_code, currency, rates) ?? 0);
-  }, 0);
+  const totalBalance = accounts.reduce((sum, acc) =>
+    sum + (convertToSystem(acc.balance ?? 0, acc.currency_code, currency, rates) ?? 0), 0);
+  const totalCredit = accounts.reduce((sum, acc) =>
+    sum + (convertToSystem(acc.credit_limit ?? 0, acc.currency_code, currency, rates) ?? 0), 0);
+  const totalPersonal = accounts.reduce((sum, acc) =>
+    sum + (convertToSystem(personalBalance(acc), acc.currency_code, currency, rates) ?? 0), 0);
+  const hasCreditAccounts = accounts.some(acc => (acc.credit_limit ?? 0) > 0);
 
   if (loading) {
     return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
@@ -112,6 +115,17 @@ export default function AccountsScreen() {
             {SYSTEM_SYMBOL[currency]}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           <Text style={styles.totalCurrency}>{currency}</Text>
+          {hasCreditAccounts && (
+            <View style={styles.totalBreakdown}>
+              <Text style={styles.totalBreakdownText}>
+                Credit  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+              </Text>
+              <Text style={styles.totalBreakdownDivider}>·</Text>
+              <Text style={styles.totalBreakdownText}>
+                Personal  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalPersonal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Currency Rates */}
@@ -232,6 +246,10 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
   totalAmount: { fontSize: 42, fontWeight: '800', color: '#fff', letterSpacing: -1 },
   totalCurrency: { fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 4, fontWeight: '600' },
+  totalBreakdown: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  totalBreakdownText: { fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: '500' },
+  totalBreakdownValue: { fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+  totalBreakdownDivider: { fontSize: 12, color: 'rgba(255,255,255,0.3)' },
   sectionTitle: {
     fontSize: 13, fontWeight: '700', color: '#888', letterSpacing: 0.8,
     textTransform: 'uppercase', marginHorizontal: 20, marginTop: 8, marginBottom: 12,

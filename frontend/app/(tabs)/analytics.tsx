@@ -344,8 +344,9 @@ export default function AnalyticsScreen() {
     return transactions;
   }, [transactions, rangeMode, navDate, period]);
 
-  const expenses  = useMemo(() => filtered.filter(tx => tx.amount < 0 && tx.source !== 'transfer'), [filtered]);
-  const income    = useMemo(() => filtered.filter(tx => tx.amount > 0 && tx.source !== 'transfer'), [filtered]);
+  const isInternal = (tx: Transaction) => tx.category === 'Transfer' || tx.category === 'Correction';
+  const expenses  = useMemo(() => filtered.filter(tx => tx.amount < 0 && !isInternal(tx)), [filtered]);
+  const income    = useMemo(() => filtered.filter(tx => tx.amount > 0 && !isInternal(tx)), [filtered]);
 
   const totalExpenses = expenses.reduce((s, tx) => s + Math.abs(tx.amount), 0);
   const totalIncome   = income.reduce((s, tx) => s + tx.amount, 0);

@@ -67,6 +67,9 @@ export default function TransactionsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [potentialTransfers, setPotentialTransfers] = useState<{ cashTx: Transaction; monoTx: Transaction }[]>([]);
+  const [showTransferReview, setShowTransferReview] = useState(false);
+  const [dismissedTransfers, setDismissedTransfers] = useState<Set<string>>(new Set());
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -118,6 +121,50 @@ export default function TransactionsScreen() {
     setNewCategoryName('');
   };
 
+  // ── Transfer detection ─────────────────────────────────────────────────────
+  const detectPotentialTransfers = useCallback((txs: Transaction[]) => {
+    const THREE_DAYS = 3 * 86400;
+    const cashWithdrawals = txs.filter(tx => tx.amount < 0 && tx.category !== 'Transfer' && tx.source !== 'mono');
+    const monoDeposits    = txs.filter(tx => tx.amount > 0 && tx.category !== 'Transfer' && tx.source === 'mono');
+
+    const pairs: { cashTx: Transaction; monoTx: Transaction }[] = [];
+    const usedMono = new Set<number>();
+    const usedCash = new Set<number>();
+
+    for (const cashTx of cashWithdrawals) {
+      for (const monoTx of monoDeposits) {
+        if (usedMono.has(monoTx.id) || usedCash.has(cashTx.id)) continue;
+        const amountMatch = Math.abs(Math.abs(cashTx.amount) - monoTx.amount) < 1.0;
+        const timeDiff = Math.abs(cashTx.time - monoTx.time);
+        if (amountMatch && timeDiff <= THREE_DAYS) {
+          pairs.push({ cashTx, monoTx });
+          usedMono.add(monoTx.id);
+          usedCash.add(cashTx.id);
+        }
+      }
+    }
+    setPotentialTransfers(pairs);
+  }, []);
+
+  const confirmTransfer = async (cashTx: Transaction, monoTx: Transaction) => {
+    try {
+      await Promise.all([
+        apiFetch(`/transactions/${cashTx.id}`, { method: 'PUT', body: JSON.stringify({ category: 'Transfer' }) }),
+        apiFetch(`/transactions/${monoTx.id}`, { method: 'PUT', body: JSON.stringify({ category: 'Transfer' }) }),
+      ]);
+      setPotentialTransfers(prev => prev.filter(p => p.cashTx.id !== cashTx.id));
+      fetchAll();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
+  const dismissTransfer = (cashTx: Transaction, monoTx: Transaction) => {
+    const key = `${cashTx.id}-${monoTx.id}`;
+    setDismissedTransfers(prev => new Set([...prev, key]));
+    setPotentialTransfers(prev => prev.filter(p => p.cashTx.id !== cashTx.id));
+  };
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
@@ -129,6 +176,7 @@ export default function TransactionsScreen() {
       setTransactions(txs);
       setAccounts(accs);
       setCustomCategories(cats);
+      detectPotentialTransfers(txs);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -247,6 +295,73 @@ export default function TransactionsScreen() {
         <Text style={styles.monthLabel}>{monthNames[month]} {year}</Text>
         <TouchableOpacity onPress={nextMonth} style={styles.monthArrow}><Text style={styles.monthArrowText}>›</Text></TouchableOpacity>
       </View>
+
+      {/* ── Potential transfers banner ── */}
+      {potentialTransfers.length > 0 && (
+        <TouchableOpacity style={styles.transferBanner} onPress={() => setShowTransferReview(true)} activeOpacity={0.8}>
+          <Text style={styles.transferBannerIcon}>↔️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.transferBannerTitle}>{potentialTransfers.length} possible transfer{potentialTransfers.length > 1 ? 's' : ''} found</Text>
+            <Text style={styles.transferBannerSub}>Tap to review and merge duplicates</Text>
+          </View>
+          <Text style={styles.transferBannerArrow}>›</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Transfer review modal ── */}
+      <Modal visible={showTransferReview} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTransferReview(false)}>
+        <View style={styles.reviewRoot}>
+          <View style={styles.reviewHeader}>
+            <Text style={styles.reviewTitle}>Review Transfers</Text>
+            <TouchableOpacity onPress={() => setShowTransferReview(false)}>
+              <Text style={styles.reviewClose}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.reviewSub}>These transactions may be the same transfer. Merging marks both as "Transfer" and removes them from analytics.</Text>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 14 }}>
+            {potentialTransfers.map(({ cashTx, monoTx }) => {
+              const cashAcc = accounts.find(a => a.id === cashTx.account_id);
+              const monoAcc = accounts.find(a => a.id === monoTx.account_id);
+              const sym = currencySymbol(cashTx.currency_code);
+              const fmtDate = (tx: Transaction) => new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time)
+                .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+              return (
+                <View key={`${cashTx.id}-${monoTx.id}`} style={styles.reviewCard}>
+                  <View style={styles.reviewRow}>
+                    <View style={styles.reviewTxBox}>
+                      <Text style={styles.reviewTxLabel}>Cash withdrawal</Text>
+                      <Text style={styles.reviewTxAcc}>{cashAcc?.name ?? '—'}</Text>
+                      <Text style={styles.reviewTxDate}>{fmtDate(cashTx)}</Text>
+                      <Text style={[styles.reviewTxAmount, { color: '#c0392b' }]}>{sym}{Math.abs(cashTx.amount).toFixed(2)}</Text>
+                    </View>
+                    <Text style={styles.reviewArrow}>→</Text>
+                    <View style={styles.reviewTxBox}>
+                      <Text style={styles.reviewTxLabel}>Mono deposit</Text>
+                      <Text style={styles.reviewTxAcc}>{monoAcc?.name ?? '—'}</Text>
+                      <Text style={styles.reviewTxDate}>{fmtDate(monoTx)}</Text>
+                      <Text style={[styles.reviewTxAmount, { color: '#27ae60' }]}>+{sym}{monoTx.amount.toFixed(2)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.reviewBtns}>
+                    <TouchableOpacity style={styles.reviewDismissBtn} onPress={() => dismissTransfer(cashTx, monoTx)}>
+                      <Text style={styles.reviewDismissText}>Not a transfer</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.reviewConfirmBtn} onPress={() => confirmTransfer(cashTx, monoTx)}>
+                      <Text style={styles.reviewConfirmText}>↔ Merge as transfer</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+            {potentialTransfers.length === 0 && (
+              <View style={{ alignItems: 'center', marginTop: 40 }}>
+                <Text style={{ fontSize: 40, marginBottom: 12 }}>✅</Text>
+                <Text style={{ fontSize: 16, color: '#aaa' }}>All transfers reviewed</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* ── List ── */}
       <ScrollView
@@ -555,6 +670,37 @@ const styles = StyleSheet.create({
   txChevron: { fontSize: 20, color: '#ccc', marginLeft: 8, fontWeight: '300' },
   negative: { color: '#c0392b' },
   positive: { color: '#27ae60' },
+
+  // Transfer banner
+  transferBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff8e1', borderLeftWidth: 4, borderLeftColor: '#f5a623',
+    marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 14,
+  },
+  transferBannerIcon: { fontSize: 22 },
+  transferBannerTitle: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+  transferBannerSub: { fontSize: 12, color: '#888', marginTop: 1 },
+  transferBannerArrow: { fontSize: 22, color: '#f5a623', fontWeight: '700' },
+
+  // Transfer review modal
+  reviewRoot: { flex: 1, backgroundColor: '#F6F6F6' },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 24, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  reviewTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a' },
+  reviewClose: { fontSize: 16, fontWeight: '600', color: BRAND },
+  reviewSub: { fontSize: 13, color: '#888', paddingHorizontal: 20, paddingVertical: 12, lineHeight: 18 },
+  reviewCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#f0f0f0' },
+  reviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  reviewTxBox: { flex: 1, backgroundColor: '#F8F8F8', borderRadius: 12, padding: 12 },
+  reviewTxLabel: { fontSize: 11, fontWeight: '700', color: '#aaa', textTransform: 'uppercase', marginBottom: 4 },
+  reviewTxAcc: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+  reviewTxDate: { fontSize: 12, color: '#aaa', marginTop: 2 },
+  reviewTxAmount: { fontSize: 16, fontWeight: '800', marginTop: 6 },
+  reviewArrow: { fontSize: 20, color: '#ccc', fontWeight: '700' },
+  reviewBtns: { flexDirection: 'row', gap: 8 },
+  reviewDismissBtn: { flex: 1, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderWidth: 1.5, borderColor: '#e0e0e0' },
+  reviewDismissText: { fontSize: 13, fontWeight: '600', color: '#888' },
+  reviewConfirmBtn: { flex: 2, borderRadius: 12, paddingVertical: 11, alignItems: 'center', backgroundColor: BRAND },
+  reviewConfirmText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
