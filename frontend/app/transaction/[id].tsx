@@ -9,7 +9,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
-import { BRAND, currencySymbol, CURRENCY_NAMES } from '@/constants/brand';
+import { BRAND, currencySymbol, CURRENCY_NAMES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, CATEGORY_COLORS } from '@/constants/brand';
 
 const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   grocery:    { label: 'Groceries',   icon: '🛒', color: '#27ae60', bg: '#e8f5e9' },
@@ -55,6 +55,9 @@ export default function TransactionDetailScreen() {
   const [editDateTime, setEditDateTime] = useState(new Date());
   const [editAccountId, setEditAccountId] = useState('');
   const [editCurrencyCode, setEditCurrencyCode] = useState<number>(980);
+  const [editCategory, setEditCategory] = useState<string | null>(null);
+  const [showCustomCatInput, setShowCustomCatInput] = useState(false);
+  const [customCatInput, setCustomCatInput] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -73,6 +76,7 @@ export default function TransactionDetailScreen() {
       setEditDateTime(new Date(found.time < 1e10 ? found.time * 1000 : found.time));
       setEditAccountId(String(found.account_id));
       setEditCurrencyCode(found.currency_code);
+      setEditCategory(found.category ?? null);
       setAccounts(accs);
       const acc = accs.find((a: Account) => a.id === found.account_id);
       setAccount(acc ?? null);
@@ -130,6 +134,7 @@ export default function TransactionDetailScreen() {
           currency_code: editCurrencyCode,
           time: Math.floor(editDateTime.getTime() / 1000),
           account_id: parseInt(editAccountId),
+          category: editCategory,
         }),
       });
       setTx(updated);
@@ -183,6 +188,7 @@ export default function TransactionDetailScreen() {
           <DetailRow label="Time" value={timeStr} />
           <DetailRow label="Account" value={account?.name ?? `Account #${tx.account_id}`} />
           <DetailRow label="Currency" value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
+          <DetailRow label="Category" value={tx.category ?? cat.label} />
           <DetailRow label="Source" value={tx.source} capitalize />
           {tx.mcc != null && tx.mcc > 0 && <DetailRow label="MCC Code" value={String(tx.mcc)} last />}
         </View>
@@ -328,6 +334,74 @@ export default function TransactionDetailScreen() {
                 })}
               </ScrollView>
 
+              {/* Category */}
+              <Text style={styles.modalLabel}>Category</Text>
+              <View style={styles.categoryGrid}>
+                {(isExpense ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES).map(c => {
+                  const active = editCategory === c.label;
+                  return (
+                    <TouchableOpacity
+                      key={c.label}
+                      style={[styles.categoryChip, active && { backgroundColor: c.color, borderColor: c.color }]}
+                      onPress={() => setEditCategory(active ? null : c.label)}
+                    >
+                      <Text style={styles.categoryChipIcon}>{c.icon}</Text>
+                      <Text style={[styles.categoryChipText, active && { color: '#fff' }]}>{c.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Custom category chip (if set and not in defaults) */}
+                {editCategory && !(isExpense ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES).find(c => c.label === editCategory) && (
+                  <TouchableOpacity
+                    style={[styles.categoryChip, { backgroundColor: BRAND, borderColor: BRAND }]}
+                    onPress={() => setEditCategory(null)}
+                  >
+                    <Text style={styles.categoryChipIcon}>🏷️</Text>
+                    <Text style={[styles.categoryChipText, { color: '#fff' }]}>{editCategory}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* + Category button */}
+                <TouchableOpacity
+                  style={[styles.categoryChip, styles.addCategoryChip]}
+                  onPress={() => { setShowCustomCatInput(v => !v); setCustomCatInput(''); }}
+                >
+                  <Text style={styles.addCategoryText}>+ Category</Text>
+                </TouchableOpacity>
+              </View>
+
+              {showCustomCatInput && (
+                <View style={styles.customCatRow}>
+                  <TextInput
+                    style={styles.customCatInput}
+                    placeholder="e.g. Pets, Hobbies..."
+                    placeholderTextColor="#bbb"
+                    value={customCatInput}
+                    onChangeText={setCustomCatInput}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      const trimmed = customCatInput.trim();
+                      if (trimmed) { setEditCategory(trimmed); }
+                      setShowCustomCatInput(false);
+                      setCustomCatInput('');
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={styles.customCatConfirm}
+                    onPress={() => {
+                      const trimmed = customCatInput.trim();
+                      if (trimmed) { setEditCategory(trimmed); }
+                      setShowCustomCatInput(false);
+                      setCustomCatInput('');
+                    }}
+                  >
+                    <Text style={styles.customCatConfirmText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEdit(false)}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -459,6 +533,31 @@ const styles = StyleSheet.create({
   accChipTextActive: { color: '#fff' },
   accChipSub: { fontSize: 10, color: '#999', marginTop: 2, fontWeight: '600' },
   accChipSubActive: { color: 'rgba(255,255,255,0.7)' },
+
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  categoryChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: '#f0f0f0', borderWidth: 1.5, borderColor: '#e0e0e0',
+  },
+  categoryChipIcon: { fontSize: 14 },
+  categoryChipText: { fontSize: 13, fontWeight: '600', color: '#444' },
+  addCategoryChip: { backgroundColor: '#fff', borderColor: BRAND, borderStyle: 'dashed' },
+  addCategoryText: { fontSize: 13, fontWeight: '700', color: BRAND },
+  customCatRow: {
+    flexDirection: 'row', gap: 8, marginBottom: 20,
+    alignItems: 'center',
+  },
+  customCatInput: {
+    flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee',
+  },
+  customCatConfirm: {
+    backgroundColor: BRAND, borderRadius: 12,
+    paddingHorizontal: 18, paddingVertical: 11,
+  },
+  customCatConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
   cancelBtn: {

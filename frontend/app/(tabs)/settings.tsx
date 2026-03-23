@@ -8,21 +8,59 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t, Currency, Language } from '@/components/AppContext';
-import { BRAND } from '@/constants/brand';
+import { BRAND, currencySymbol } from '@/constants/brand';
+
+const TYPE_ICON: Record<string, string> = {
+  black: '🖤', white: '🤍', platinum: '🔘', iron: '⚙️',
+  fop: '🏢', yellow: '💛', eAid: '🟢',
+  cash: '💵', creditCard: '💳', debitCard: '💳',
+  savings: '🏦', prepaid: '🧾', investments: '📈',
+  loan: '📉', credit: '💰', other: '📦',
+};
 
 export default function SettingsScreen() {
   const { currency, setCurrency, language, setLanguage } = useAppSettings();
+  const [rates, setRates] = useState<{ USD: number; EUR: number } | null>(null);
   const [monoLoading, setMonoLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [waitingForMono, setWaitingForMono] = useState(false);
-  // Ref so AppState callback always sees the latest value without re-registering
+  const [monoStatus, setMonoStatus] = useState<{ linked: boolean; accounts: number } | null>(null);
   const waitingForMonoRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const pendingRequestIdRef = useRef<string | null>(null);
+
+  // Account picker state
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [pickerAccounts, setPickerAccounts] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirming, setConfirming] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [changePwLoading, setChangePwLoading] = useState(false);
+
+  // ── Load Monobank status ──────────────────────────────────────────────────
+  const loadMonoStatus = async () => {
+    try {
+      const requestId = await SecureStore.getItemAsync('mono_request_id');
+      const accounts = await apiFetch('/accounts');
+      const monoAccounts = accounts.filter((a: any) => a.source === 'mono');
+      setMonoStatus({ linked: !!requestId, accounts: monoAccounts.length });
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadMonoStatus();
+    fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json')
+      .then(r => r.json())
+      .then((data: any[]) => {
+        const usd = data.find(r => r.cc === 'USD')?.rate;
+        const eur = data.find(r => r.cc === 'EUR')?.rate;
+        if (usd && eur) setRates({ USD: usd, EUR: eur });
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Auto-sync when returning from Monobank app ────────────────────────────
   useEffect(() => {
@@ -37,8 +75,12 @@ export default function SettingsScreen() {
           setSyncLoading(true);
           try {
             await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' });
-            await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' });
-            Alert.alert('✅ Linked & Synced', 'Monobank accounts and transactions imported successfully.');
+            const accounts = await apiFetch('/accounts');
+            const monoAccs = accounts.filter((a: any) => a.source === 'mono');
+            pendingRequestIdRef.current = requestId;
+            setPickerAccounts(monoAccs);
+            setSelectedIds(new Set(monoAccs.map((a: any) => a.id)));
+            setShowAccountPicker(true);
           } catch (e: any) {
             Alert.alert('Sync failed', e.message);
           } finally {
@@ -55,6 +97,7 @@ export default function SettingsScreen() {
   const handleMonoLink = async () => {
     setMonoLoading(true);
     try {
+      await apiFetch('/mono/corp/register-webhook', { method: 'POST' }).catch(() => {});
       const data = await apiFetch('/mono/auth/request', { method: 'POST' });
       const url = data.acceptUrl ?? data.url;
       if (url) {
@@ -91,6 +134,30 @@ export default function SettingsScreen() {
       Alert.alert('Sync failed', e.message);
     } finally {
       setSyncLoading(false);
+    }
+  };
+
+  // ── Confirm account selection ─────────────────────────────────────────────
+  const handleConfirmAccounts = async () => {
+    const requestId = pendingRequestIdRef.current;
+    if (!requestId) return;
+    setConfirming(true);
+    try {
+      // Delete accounts the user deselected
+      const toDelete = pickerAccounts.filter(a => !selectedIds.has(a.id));
+      await Promise.all(toDelete.map(a => apiFetch(`/accounts/${a.id}`, { method: 'DELETE' })));
+
+      // Sync transactions only for kept accounts
+      await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' });
+
+      setShowAccountPicker(false);
+      loadMonoStatus();
+      Alert.alert('✅ Linked & Synced', `${selectedIds.size} account${selectedIds.size !== 1 ? 's' : ''} linked and transactions imported.`);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setConfirming(false);
+      pendingRequestIdRef.current = null;
     }
   };
 
@@ -148,15 +215,21 @@ export default function SettingsScreen() {
       {/* ── System Currency ── */}
       <Text style={styles.sectionTitle}>{t('system_currency', language)}</Text>
       <View style={styles.card}>
-        {(['UAH', 'USD', 'EUR'] as Currency[]).map((c, i, arr) => (
+        {([
+          { c: 'UAH' as Currency, flag: '🇺🇦', name: 'Ukrainian Hryvnia', rate: '1.00 ₴' },
+          { c: 'USD' as Currency, flag: '🇺🇸', name: 'US Dollar', rate: rates ? `${rates.USD.toFixed(2)} ₴` : '…' },
+          { c: 'EUR' as Currency, flag: '🇪🇺', name: 'Euro', rate: rates ? `${rates.EUR.toFixed(2)} ₴` : '…' },
+        ]).map(({ c, flag, name, rate }, i, arr) => (
           <TouchableOpacity
             key={c}
             style={[styles.optionRow, i < arr.length - 1 && styles.optionBorder]}
             onPress={() => setCurrency(c)}
           >
-            <Text style={styles.optionLabel}>
-              {c === 'UAH' ? '🇺🇦' : c === 'USD' ? '🇺🇸' : '🇪🇺'} {c}
-            </Text>
+            <Text style={styles.currencyFlag}>{flag}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.currencyName}>{name}</Text>
+              <Text style={styles.currencyRate}>{c}  ·  {rate}</Text>
+            </View>
             <View style={[styles.radio, currency === c && styles.radioActive]}>
               {currency === c && <View style={styles.radioDot} />}
             </View>
@@ -196,18 +269,34 @@ export default function SettingsScreen() {
       {/* ── Monobank ── */}
       <Text style={styles.sectionTitle}>{t('monobank', language)}</Text>
       <View style={styles.card}>
+        {/* Status banner */}
+        {monoStatus && (
+          <View style={[styles.monoStatus, { backgroundColor: monoStatus.linked ? '#f0fff4' : '#fff8f0' }]}>
+            <Text style={styles.monoStatusDot}>{monoStatus.linked ? '🟢' : '🔴'}</Text>
+            <Text style={[styles.monoStatusText, { color: monoStatus.linked ? '#27ae60' : '#e67e22' }]}>
+              {monoStatus.linked
+                ? `Connected · ${monoStatus.accounts} account${monoStatus.accounts !== 1 ? 's' : ''} linked`
+                : 'Not connected — tap "Link Monobank" to set up'}
+            </Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[styles.actionRow, styles.optionBorder]}
           onPress={handleMonoLink}
           disabled={monoLoading || waitingForMono}
         >
           <View style={styles.actionLeft}>
-            <Text style={styles.actionIcon}>🟡</Text>
+            <Text style={styles.actionIcon}>{monoStatus?.linked ? '✅' : '🟡'}</Text>
             <View>
-              <Text style={styles.actionLabel}>{t('link_monobank', language)}</Text>
-              {waitingForMono && (
-                <Text style={styles.actionHint}>Waiting for approval — return here when done</Text>
-              )}
+              <Text style={styles.actionLabel}>
+                {monoStatus?.linked ? 'Relink Monobank' : t('link_monobank', language)}
+              </Text>
+              {waitingForMono
+                ? <Text style={styles.actionHint}>Waiting for approval in Monobank app…</Text>
+                : <Text style={styles.actionHint}>
+                    {monoStatus?.linked ? 'Tap to re-authorise access' : 'Opens Monobank to authorise access'}
+                  </Text>}
             </View>
           </View>
           {monoLoading || waitingForMono
@@ -222,7 +311,10 @@ export default function SettingsScreen() {
         >
           <View style={styles.actionLeft}>
             <Text style={styles.actionIcon}>🔄</Text>
-            <Text style={styles.actionLabel}>{t('sync_mono', language)}</Text>
+            <View>
+              <Text style={styles.actionLabel}>{t('sync_mono', language)}</Text>
+              <Text style={styles.actionHint}>Manually pull last 30 days</Text>
+            </View>
           </View>
           {syncLoading ? <ActivityIndicator color={BRAND} /> : <Text style={styles.chevron}>›</Text>}
         </TouchableOpacity>
@@ -235,6 +327,74 @@ export default function SettingsScreen() {
 
       <Text style={styles.version}>MoneyMate v1.0</Text>
     </ScrollView>
+
+    {/* ── Account Picker Modal ── */}
+    <Modal visible={showAccountPicker} animationType="slide" transparent onRequestClose={() => {}}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalCard, { paddingBottom: 32 }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Choose Accounts</Text>
+          <Text style={styles.pickerSubtitle}>Select which Monobank accounts to track. Others will be removed.</Text>
+
+          {pickerAccounts.map((acc, i) => {
+            const active = selectedIds.has(acc.id);
+            return (
+              <TouchableOpacity
+                key={acc.id}
+                style={[styles.accPickerRow, i < pickerAccounts.length - 1 && styles.optionBorder]}
+                onPress={() => setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(acc.id)) next.delete(acc.id);
+                  else next.add(acc.id);
+                  return next;
+                })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.accPickerIcon}>{TYPE_ICON[acc.type] ?? '🏦'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accPickerName}>{acc.name}</Text>
+                  <Text style={styles.accPickerBalance}>
+                    {currencySymbol(acc.currency_code)}{(acc.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+                <View style={[styles.checkbox, active && styles.checkboxActive]}>
+                  {active && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={[styles.modalBtns, { marginTop: 20 }]}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => {
+                // User skipped — keep all, still sync transactions
+                setShowAccountPicker(false);
+                const rid = pendingRequestIdRef.current;
+                if (rid) {
+                  setSyncLoading(true);
+                  apiFetch(`/mono/sync-transactions?request_id=${rid}`, { method: 'POST' })
+                    .then(() => { loadMonoStatus(); Alert.alert('✅ Synced', 'All accounts linked.'); })
+                    .catch((e: any) => Alert.alert('Sync failed', e.message))
+                    .finally(() => { setSyncLoading(false); pendingRequestIdRef.current = null; });
+                }
+              }}
+            >
+              <Text style={styles.cancelBtnText}>Skip</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, (confirming || selectedIds.size === 0) && { opacity: 0.65 }]}
+              onPress={handleConfirmAccounts}
+              disabled={confirming || selectedIds.size === 0}
+            >
+              {confirming
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.saveBtnText}>Confirm ({selectedIds.size})</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
 
     {/* ── Change Password Modal ── */}
     <Modal visible={showChangePw} animationType="slide" transparent onRequestClose={() => setShowChangePw(false)}>
@@ -323,6 +483,9 @@ const styles = StyleSheet.create({
   },
   optionBorder: { borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   optionLabel: { fontSize: 16, color: '#1a1a1a', fontWeight: '500' },
+  currencyFlag: { fontSize: 22, marginRight: 12 },
+  currencyName: { fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
+  currencyRate: { fontSize: 12, color: '#aaa', marginTop: 1 },
 
   radio: {
     width: 22, height: 22, borderRadius: 11,
@@ -341,6 +504,9 @@ const styles = StyleSheet.create({
   actionIcon: { fontSize: 22 },
   actionLabel: { fontSize: 16, color: '#1a1a1a', fontWeight: '500' },
   actionHint: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  monoStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  monoStatusDot: { fontSize: 12 },
+  monoStatusText: { fontSize: 13, fontWeight: '600', flex: 1 },
   chevron: { fontSize: 22, color: '#ccc', fontWeight: '300' },
 
   logoutBtn: {
@@ -354,6 +520,18 @@ const styles = StyleSheet.create({
   version: {
     textAlign: 'center', fontSize: 12, color: '#ccc', marginTop: 24,
   },
+
+  pickerSubtitle: { fontSize: 13, color: '#888', marginBottom: 20, lineHeight: 18 },
+  accPickerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12 },
+  accPickerIcon: { fontSize: 24 },
+  accPickerName: { fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
+  accPickerBalance: { fontSize: 13, color: '#888', marginTop: 2 },
+  checkbox: {
+    width: 24, height: 24, borderRadius: 7, borderWidth: 2,
+    borderColor: '#ddd', alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxActive: { backgroundColor: BRAND, borderColor: BRAND },
+  checkmark: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 48 },

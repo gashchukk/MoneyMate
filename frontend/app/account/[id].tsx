@@ -228,7 +228,7 @@ export default function AccountDetailScreen() {
                   </Text>
                 </View>
                 {byDay[day].map(tx => (
-                  <View key={tx.id} style={[styles.txRow, { backgroundColor: mccColor(tx.mcc) }]}>
+                  <TouchableOpacity key={tx.id} style={[styles.txRow, { backgroundColor: mccColor(tx.mcc) }]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
                     <Text style={styles.txIcon}>{mccLabel(tx.mcc)}</Text>
                     <View style={styles.txMid}>
                       <Text style={styles.txDesc} numberOfLines={1}>{tx.description || '—'}</Text>
@@ -240,7 +240,7 @@ export default function AccountDetailScreen() {
                     <Text style={[styles.txAmount, tx.amount < 0 ? styles.negative : styles.positive]}>
                       {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} {currencySymbol(tx.currency_code)}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             );

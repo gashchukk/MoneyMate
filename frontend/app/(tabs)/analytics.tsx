@@ -1,19 +1,18 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, RefreshControl, Dimensions,
+  ActivityIndicator, Alert, RefreshControl, Modal,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, CATEGORY_COLORS, currencySymbol } from '@/constants/brand';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BAR_CHART_WIDTH = SCREEN_WIDTH - 64;
-
 type Period = '7d' | '30d' | '3m' | '6m' | '1y' | 'all';
-type ViewTab = 'overview' | 'categories' | 'trends' | 'accounts';
+type MainTab = 'spendings' | 'income';
+type RangeMode = 'weekly' | 'monthly' | 'annually' | 'custom';
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: '7d',  label: '7D' },
@@ -24,12 +23,12 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'all', label: 'All' },
 ];
 
-const VIEW_TABS: { key: ViewTab; label: string; icon: string }[] = [
-  { key: 'overview',   label: 'Overview',   icon: '📊' },
-  { key: 'categories', label: 'Categories', icon: '🏷️' },
-  { key: 'trends',     label: 'Trends',     icon: '📈' },
-  { key: 'accounts',   label: 'Accounts',   icon: '🏦' },
-];
+const RANGE_MODE_LABELS: Record<RangeMode, string> = {
+  weekly:   'Weekly',
+  monthly:  'Monthly',
+  annually: 'Annually',
+  custom:   'Custom',
+};
 
 const PALETTE = [
   '#8B1A1A','#e67e22','#27ae60','#2980b9','#9b59b6',
@@ -60,13 +59,17 @@ function filterByPeriod(txs: Transaction[], period: Period): Transaction[] {
   });
 }
 
-// ── Mini bar chart ────────────────────────────────────────────────────────────
-function BarChart({ data, color }: { data: { label: string; value: number }[]; color: string }) {
-  const max = Math.max(...data.map(d => Math.abs(d.value)), 1);
+// ── Mini bar chart ─────────────────────────────────────────────────────────────
+function BarChart({ data, color, sym }: { data: { label: string; value: number }[]; color: string; sym: string }) {
+  const max = data.reduce((m, d) => Math.max(m, Math.abs(d.value)), 1);
+  const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
   return (
     <View style={chartStyles.root}>
       {data.map((d, i) => (
         <View key={i} style={chartStyles.barCol}>
+          <Text style={[chartStyles.barValue, { color }]}>
+            {Math.abs(d.value) > 0 ? `${sym}${fmt(Math.abs(d.value))}` : ''}
+          </Text>
           <View style={chartStyles.barTrack}>
             <View style={[chartStyles.bar, { height: `${(Math.abs(d.value) / max) * 100}%`, backgroundColor: color }]} />
           </View>
@@ -78,60 +81,176 @@ function BarChart({ data, color }: { data: { label: string; value: number }[]; c
 }
 
 const chartStyles = StyleSheet.create({
-  root: { flexDirection: 'row', alignItems: 'flex-end', height: 100, gap: 4 },
-  barCol: { flex: 1, alignItems: 'center' },
+  root: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: 4 },
+  barCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
+  barValue: { fontSize: 8, fontWeight: '700', marginBottom: 2, textAlign: 'center' },
   barTrack: { flex: 1, width: '70%', justifyContent: 'flex-end', backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden' },
   bar: { borderRadius: 4, minHeight: 2 },
   barLabel: { fontSize: 9, color: '#aaa', marginTop: 4, textAlign: 'center' },
 });
 
-// ── Donut chart (pure RN) ─────────────────────────────────────────────────────
-function DonutLegend({ slices }: { slices: { label: string; value: number; color: string; pct: number }[] }) {
+// ── Category Pie Chart ─────────────────────────────────────────────────────────
+type Slice = { label: string; value: number; color: string; pct: number };
+
+// ── SVG Donut Chart ───────────────────────────────────────────────────────────
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function DonutChart({ slices, size, accentColor, total, sym, selected, onPress }: {
+  slices: Slice[]; size: number; accentColor: string; total: number; sym: string;
+  selected: Slice | null; onPress: (s: Slice) => void;
+}) {
+  const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
+  const cx = size / 2, cy = size / 2;
+  const R = size / 2 - 4;
+  const r = R * 0.56;
+  const GAP = 1.2;
+
+  let cursor = 0;
+  const active = selected;
+
   return (
-    <View style={donutStyles.legend}>
-      {slices.slice(0, 8).map((s, i) => (
-        <View key={i} style={donutStyles.legendRow}>
-          <View style={[donutStyles.dot, { backgroundColor: s.color }]} />
-          <Text style={donutStyles.legendLabel} numberOfLines={1}>{s.label}</Text>
-          <Text style={donutStyles.legendPct}>{s.pct.toFixed(1)}%</Text>
-          <Text style={donutStyles.legendValue}>{s.value.toFixed(0)}</Text>
-        </View>
-      ))}
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        {slices.map((s, i) => {
+          const sweep = (s.pct / 100) * 360;
+          const start = cursor + GAP / 2;
+          const end = cursor + sweep - GAP / 2;
+          cursor += sweep;
+
+          const isActive = active?.label === s.label;
+          const outerR = isActive ? R + 5 : R;
+          const innerR = isActive ? r - 2 : r;
+
+          if (sweep >= 359.5) {
+            return (
+              <Circle
+                key={i} cx={cx} cy={cy}
+                r={(outerR + innerR) / 2}
+                stroke={s.color} strokeWidth={outerR - innerR} fill="none"
+                onPress={() => onPress(s)}
+              />
+            );
+          }
+
+          const o1 = polar(cx, cy, outerR, start);
+          const o2 = polar(cx, cy, outerR, end);
+          const i1 = polar(cx, cy, innerR, end);
+          const i2 = polar(cx, cy, innerR, start);
+          const large = sweep - GAP > 180 ? 1 : 0;
+
+          const d = [
+            `M ${o1.x} ${o1.y}`,
+            `A ${outerR} ${outerR} 0 ${large} 1 ${o2.x} ${o2.y}`,
+            `L ${i1.x} ${i1.y}`,
+            `A ${innerR} ${innerR} 0 ${large} 0 ${i2.x} ${i2.y}`,
+            'Z',
+          ].join(' ');
+
+          return <Path key={i} d={d} fill={s.color} opacity={active && !isActive ? 0.35 : 1} onPress={() => onPress(s)} />;
+        })}
+      </Svg>
+
+      {/* Center label */}
+      <View style={{ alignItems: 'center', paddingHorizontal: 8 }}>
+        {active ? (
+          <>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: active.color, letterSpacing: -0.3 }} numberOfLines={1}>
+              {sym}{fmt(active.value)}
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: active.color, marginTop: 1 }}>
+              {active.pct.toFixed(1)}%
+            </Text>
+            <Text style={{ fontSize: 9, color: '#aaa', fontWeight: '600', marginTop: 1 }} numberOfLines={1}>
+              {active.label}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: accentColor, letterSpacing: -0.5 }}>
+              {sym}{fmt(total)}
+            </Text>
+            <Text style={{ fontSize: 9, color: '#bbb', fontWeight: '700', letterSpacing: 0.5, marginTop: 1 }}>
+              TOTAL
+            </Text>
+          </>
+        )}
+      </View>
     </View>
   );
 }
 
-const donutStyles = StyleSheet.create({
-  legend: { gap: 10 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  legendLabel: { flex: 1, fontSize: 13, color: '#333', fontWeight: '500' },
-  legendPct: { fontSize: 12, color: '#888', width: 42, textAlign: 'right' },
-  legendValue: { fontSize: 12, fontWeight: '700', color: '#1a1a1a', width: 64, textAlign: 'right' },
+function CategoryPieChart({ slices, total, sym, accentColor }: {
+  slices: Slice[]; total: number; sym: string; accentColor: string;
+}) {
+  const [selected, setSelected] = useState<Slice | null>(null);
+  const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
+
+  const handlePress = (s: Slice) => setSelected(prev => prev?.label === s.label ? null : s);
+
+  if (slices.length === 0 || total === 0) {
+    return (
+      <View style={pieStyles.empty}>
+        <Text style={pieStyles.emptyText}>No data for this period</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={pieStyles.chartRow}>
+      <DonutChart
+        slices={slices} size={170} accentColor={accentColor}
+        total={total} sym={sym} selected={selected} onPress={handlePress}
+      />
+      <View style={pieStyles.legend}>
+        {slices.slice(0, 6).map((s, i) => {
+          const isActive = selected?.label === s.label;
+          return (
+            <TouchableOpacity key={i} style={pieStyles.legendRow} onPress={() => handlePress(s)} activeOpacity={0.7}>
+              <View style={[pieStyles.legendDot, { backgroundColor: s.color, transform: [{ scale: isActive ? 1.4 : 1 }] }]} />
+              <Text style={[pieStyles.legendLabel, isActive && { fontWeight: '700', color: s.color }]} numberOfLines={1}>{s.label}</Text>
+              <Text style={[pieStyles.legendValue, { color: s.color }]}>{sym}{fmt(s.value)}</Text>
+              <Text style={pieStyles.legendPct}>{s.pct.toFixed(1)}%</Text>
+            </TouchableOpacity>
+          );
+        })}
+        {slices.length > 6 && (
+          <Text style={pieStyles.moreText}>+{slices.length - 6} more</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const pieStyles = StyleSheet.create({
+  chartRow:   { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  legend:     { flex: 1, gap: 9 },
+  legendRow:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot:  { width: 9, height: 9, borderRadius: 5, flexShrink: 0 },
+  legendLabel:{ flex: 1, fontSize: 12, color: '#333', fontWeight: '500' },
+  legendValue:{ fontSize: 12, fontWeight: '700' },
+  legendPct:  { fontSize: 11, color: '#aaa', width: 38, textAlign: 'right' },
+  moreText:   { fontSize: 11, color: '#bbb', marginTop: 2 },
+  empty:      { alignItems: 'center', paddingVertical: 24 },
+  emptyText:  { color: '#bbb', fontSize: 13 },
 });
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, color, icon }: { label: string; value: string; sub?: string; color: string; icon: string }) {
+// ── Stat row ──────────────────────────────────────────────────────────────────
+function StatRow({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <View style={[statStyles.card, { borderLeftColor: color }]}>
-      <Text style={statStyles.icon}>{icon}</Text>
+    <View style={statStyles.row}>
       <Text style={statStyles.label}>{label}</Text>
-      <Text style={[statStyles.value, { color }]}>{value}</Text>
-      {sub && <Text style={statStyles.sub}>{sub}</Text>}
+      <Text style={[statStyles.value, color ? { color } : {}]}>{value}</Text>
     </View>
   );
 }
 
 const statStyles = StyleSheet.create({
-  card: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 16,
-    borderLeftWidth: 3, minWidth: 140,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
-  },
-  icon: { fontSize: 22, marginBottom: 6 },
-  label: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
-  value: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-  sub: { fontSize: 11, color: '#bbb', marginTop: 3 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  label: { fontSize: 14, color: '#666' },
+  value: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
 });
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -142,8 +261,41 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>('30d');
-  const [viewTab, setViewTab] = useState<ViewTab>('overview');
+  const [mainTab, setMainTab] = useState<MainTab>('spendings');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // ── Date range navigator ──────────────────────────────────────────────────
+  const [rangeMode, setRangeMode] = useState<RangeMode>('monthly');
+  const [navDate, setNavDate] = useState(() => new Date());
+  const [showModeMenu, setShowModeMenu] = useState(false);
+
+  const navigate = useCallback((dir: -1 | 1) => {
+    setNavDate(prev => {
+      const d = new Date(prev);
+      if (rangeMode === 'weekly')   d.setDate(d.getDate() + dir * 7);
+      if (rangeMode === 'monthly')  d.setMonth(d.getMonth() + dir);
+      if (rangeMode === 'annually') d.setFullYear(d.getFullYear() + dir);
+      return d;
+    });
+  }, [rangeMode]);
+
+  const rangeLabel = useMemo(() => {
+    if (rangeMode === 'custom') return 'Custom';
+    if (rangeMode === 'weekly') {
+      const day = navDate.getDay();
+      const mon = new Date(navDate);
+      mon.setDate(navDate.getDate() - (day === 0 ? 6 : day - 1));
+      mon.setHours(0, 0, 0, 0);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `${fmt(mon)} – ${fmt(sun)}`;
+    }
+    if (rangeMode === 'monthly') {
+      return navDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+    return `${navDate.getFullYear()}`;
+  }, [rangeMode, navDate]);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -160,42 +312,71 @@ export default function AnalyticsScreen() {
 
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
-  // ── Derived data ───────────────────────────────────────────────────────────
-  const filtered = useMemo(() => filterByPeriod(transactions, period), [transactions, period]);
+  // ── Filtered transactions for the selected period ─────────────────────────
+  const filtered = useMemo(() => {
+    if (rangeMode === 'custom') return filterByPeriod(transactions, period);
+    if (rangeMode === 'monthly') {
+      const y = navDate.getFullYear(), m = navDate.getMonth();
+      return transactions.filter(tx => {
+        const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+        return d.getFullYear() === y && d.getMonth() === m;
+      });
+    }
+    if (rangeMode === 'annually') {
+      const y = navDate.getFullYear();
+      return transactions.filter(tx => {
+        const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+        return d.getFullYear() === y;
+      });
+    }
+    if (rangeMode === 'weekly') {
+      const day = navDate.getDay();
+      const mon = new Date(navDate);
+      mon.setDate(navDate.getDate() - (day === 0 ? 6 : day - 1));
+      mon.setHours(0, 0, 0, 0);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 7);
+      return transactions.filter(tx => {
+        const t = tx.time < 1e10 ? tx.time * 1000 : tx.time;
+        return t >= mon.getTime() && t < sun.getTime();
+      });
+    }
+    return transactions;
+  }, [transactions, rangeMode, navDate, period]);
 
-  const expenses   = useMemo(() => filtered.filter(tx => tx.amount < 0 && tx.source !== 'transfer'), [filtered]);
-  const income     = useMemo(() => filtered.filter(tx => tx.amount > 0 && tx.source !== 'transfer'), [filtered]);
-  const transfers  = useMemo(() => filtered.filter(tx => tx.category === 'Transfer'), [filtered]);
+  const expenses  = useMemo(() => filtered.filter(tx => tx.amount < 0 && tx.source !== 'transfer'), [filtered]);
+  const income    = useMemo(() => filtered.filter(tx => tx.amount > 0 && tx.source !== 'transfer'), [filtered]);
 
-  const totalExpenses  = expenses.reduce((s, tx) => s + Math.abs(tx.amount), 0);
-  const totalIncome    = income.reduce((s, tx) => s + tx.amount, 0);
-  const totalTransfers = transfers.reduce((s, tx) => s + Math.abs(tx.amount), 0) / 2;
-  const netFlow        = totalIncome - totalExpenses;
-  const savingsRate    = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
-  const avgExpensePerTx = expenses.length > 0 ? totalExpenses / expenses.length : 0;
-  const largestExpense  = expenses.length > 0 ? Math.max(...expenses.map(tx => Math.abs(tx.amount))) : 0;
+  const totalExpenses = expenses.reduce((s, tx) => s + Math.abs(tx.amount), 0);
+  const totalIncome   = income.reduce((s, tx) => s + tx.amount, 0);
 
-  // ── Category breakdown ────────────────────────────────────────────────────
-  const categoryMap = useMemo(() => {
+  // ── Spending category slices ───────────────────────────────────────────────
+  const categorySlices = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach(tx => {
       const key = tx.category ?? 'Other';
       map[key] = (map[key] ?? 0) + Math.abs(tx.amount);
     });
-    return map;
+    const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], i) => ({ label, value, color: getCatColor(label, i), pct: (value / total) * 100 }));
   }, [expenses]);
 
-  const categorySlices = useMemo(() => {
-    const total = Object.values(categoryMap).reduce((s, v) => s + v, 0) || 1;
-    return Object.entries(categoryMap)
+  // ── Income category slices ─────────────────────────────────────────────────
+  const incomeSlices = useMemo(() => {
+    const map: Record<string, number> = {};
+    income.forEach(tx => {
+      const key = tx.category ?? 'Other';
+      map[key] = (map[key] ?? 0) + tx.amount;
+    });
+    const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
+    return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({
-        label, value, color: getCatColor(label, i),
-        pct: (value / total) * 100,
-      }));
-  }, [categoryMap]);
+      .map(([label, value], i) => ({ label, value, color: getCatColor(label, i), pct: (value / total) * 100 }));
+  }, [income]);
 
-  // ── Monthly trend (last 6 months) ─────────────────────────────────────────
+  // ── Monthly trend (last 6 months, always from all transactions) ───────────
   const monthlyTrend = useMemo(() => {
     const months: Record<string, { exp: number; inc: number }> = {};
     const now = new Date();
@@ -208,8 +389,8 @@ export default function AnalyticsScreen() {
       const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (months[key] === undefined) return;
-      if (tx.amount < 0 && tx.category !== 'Transfer') months[key].exp += Math.abs(tx.amount);
-      if (tx.amount > 0 && tx.category !== 'Transfer') months[key].inc += tx.amount;
+      if (tx.amount < 0 && tx.source !== 'transfer') months[key].exp += Math.abs(tx.amount);
+      if (tx.amount > 0 && tx.source !== 'transfer') months[key].inc += tx.amount;
     });
     return Object.entries(months).map(([key, val]) => ({
       label: new Date(key + '-01').toLocaleDateString('en-GB', { month: 'short' }),
@@ -217,48 +398,20 @@ export default function AnalyticsScreen() {
     }));
   }, [transactions]);
 
-  // ── Daily spending (last 30 days) ─────────────────────────────────────────
-  const dailySpending = useMemo(() => {
-    const days: Record<string, number> = {};
-    const now = Date.now();
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(now - i * 86400000);
-      days[d.toISOString().split('T')[0]] = 0;
-    }
-    expenses.forEach(tx => {
-      const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-      const key = d.toISOString().split('T')[0];
-      if (days[key] !== undefined) days[key] += Math.abs(tx.amount);
-    });
-    return Object.entries(days).map(([key, value]) => ({
-      label: new Date(key).toLocaleDateString('en-GB', { day: 'numeric' }),
-      value,
-    }));
-  }, [expenses]);
+  // ── Category-drilled transactions ─────────────────────────────────────────
+  const catDrilledTxs = useMemo(() => {
+    if (!selectedCategory) return [];
+    const pool = mainTab === 'spendings' ? expenses : income;
+    return pool.filter(tx => (tx.category ?? 'Other') === selectedCategory);
+  }, [selectedCategory, expenses, income, mainTab]);
 
-  // ── Account breakdown ─────────────────────────────────────────────────────
-  const accountBreakdown = useMemo(() => {
-    return accounts.map(acc => {
-      const accTxs = filtered.filter(tx => tx.account_id === acc.id);
-      const spent = accTxs.filter(tx => tx.amount < 0).reduce((s, tx) => s + Math.abs(tx.amount), 0);
-      const received = accTxs.filter(tx => tx.amount > 0).reduce((s, tx) => s + tx.amount, 0);
-      return { ...acc, spent, received, txCount: accTxs.length };
-    }).sort((a, b) => b.txCount - a.txCount);
-  }, [accounts, filtered]);
-
-  // ── Top spending transactions ──────────────────────────────────────────────
-  const topExpenses = useMemo(() =>
-    [...expenses].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 5),
-  [expenses]);
-
-  // ── Category-filtered transactions ────────────────────────────────────────
-  const catFiltered = useMemo(() =>
-    selectedCategory ? filtered.filter(tx => (tx.category ?? 'Other') === selectedCategory) : [],
-  [filtered, selectedCategory]);
+  const sym = currencySymbol(980);
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
 
-  const sym = currencySymbol(980); // default display currency
+  const activeSlices = mainTab === 'spendings' ? categorySlices : incomeSlices;
+  const activeTotal  = mainTab === 'spendings' ? totalExpenses : totalIncome;
+  const accentColor  = mainTab === 'spendings' ? '#c0392b' : '#27ae60';
 
   return (
     <ScrollView
@@ -270,247 +423,186 @@ export default function AnalyticsScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Analytics</Text>
-        <Text style={styles.headerSub}>{filtered.length} transactions</Text>
+        <Text style={styles.headerSub}>{filtered.length} transactions in period</Text>
       </View>
 
-      {/* ── Period Filter ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.periodScroll} contentContainerStyle={styles.periodContainer}>
-        {PERIODS.map(p => (
-          <TouchableOpacity
-            key={p.key}
-            style={[styles.periodChip, period === p.key && styles.periodChipActive]}
-            onPress={() => setPeriod(p.key)}
-          >
-            <Text style={[styles.periodChipText, period === p.key && styles.periodChipTextActive]}>{p.label}</Text>
+      {/* ── Date Range Navigator ── */}
+      <View style={styles.rangeRow}>
+        {rangeMode !== 'custom' ? (
+          <TouchableOpacity onPress={() => navigate(-1)} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>‹</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        ) : (
+          <View style={styles.navArrowPlaceholder} />
+        )}
 
-      {/* ── View Tabs ── */}
-      <View style={styles.viewTabs}>
-        {VIEW_TABS.map(tab => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.viewTab, viewTab === tab.key && styles.viewTabActive]}
-            onPress={() => setViewTab(tab.key)}
-          >
-            <Text style={styles.viewTabIcon}>{tab.icon}</Text>
-            <Text style={[styles.viewTabLabel, viewTab === tab.key && styles.viewTabLabelActive]}>{tab.label}</Text>
+        {rangeMode !== 'custom' ? (
+          <Text style={styles.rangeLabel} numberOfLines={1}>{rangeLabel}</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodContainer} style={{ flex: 1 }}>
+            {PERIODS.map(p => (
+              <TouchableOpacity
+                key={p.key}
+                style={[styles.periodChip, period === p.key && styles.periodChipActive]}
+                onPress={() => setPeriod(p.key)}
+              >
+                <Text style={[styles.periodChipText, period === p.key && styles.periodChipTextActive]}>{p.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {rangeMode !== 'custom' ? (
+          <TouchableOpacity onPress={() => navigate(1)} style={styles.navArrow}>
+            <Text style={styles.navArrowText}>›</Text>
           </TouchableOpacity>
-        ))}
+        ) : (
+          <View style={styles.navArrowPlaceholder} />
+        )}
+
+        <TouchableOpacity onPress={() => setShowModeMenu(true)} style={styles.modeButton}>
+          <Text style={styles.modeButtonText}>{RANGE_MODE_LABELS[rangeMode]} ▾</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Mode dropdown modal ── */}
+      <Modal visible={showModeMenu} transparent animationType="fade" onRequestClose={() => setShowModeMenu(false)}>
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModeMenu(false)} activeOpacity={1}>
+          <View style={styles.modeMenu}>
+            {(['weekly', 'monthly', 'annually', 'custom'] as RangeMode[]).map(mode => (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.modeMenuItem, rangeMode === mode && styles.modeMenuItemActive]}
+                onPress={() => { setRangeMode(mode); setShowModeMenu(false); }}
+              >
+                <Text style={[styles.modeMenuItemText, rangeMode === mode && styles.modeMenuItemTextActive]}>
+                  {RANGE_MODE_LABELS[mode]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Main Tabs: Spendings / Income ── */}
+      <View style={styles.mainTabs}>
+        <TouchableOpacity
+          style={[styles.mainTab, mainTab === 'spendings' && styles.mainTabActiveSpend]}
+          onPress={() => { setMainTab('spendings'); setSelectedCategory(null); }}
+        >
+          <Text style={[styles.mainTabText, mainTab === 'spendings' && styles.mainTabTextActiveSpend]}>
+            ⬆️  Spendings
+          </Text>
+          <Text style={[styles.mainTabAmount, { color: mainTab === 'spendings' ? '#c0392b' : '#aaa' }]}>
+            {sym}{totalExpenses.toFixed(0)}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.mainTab, mainTab === 'income' && styles.mainTabActiveIncome]}
+          onPress={() => { setMainTab('income'); setSelectedCategory(null); }}
+        >
+          <Text style={[styles.mainTabText, mainTab === 'income' && styles.mainTabTextActiveIncome]}>
+            ⬇️  Income
+          </Text>
+          <Text style={[styles.mainTabAmount, { color: mainTab === 'income' ? '#27ae60' : '#aaa' }]}>
+            {sym}{totalIncome.toFixed(0)}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ════════════════════════════════════════════════════════════════
-          OVERVIEW TAB
+          SPENDINGS TAB
       ════════════════════════════════════════════════════════════════ */}
-      {viewTab === 'overview' && (
+      {mainTab === 'spendings' && (
         <>
-          {/* Key stats */}
-          <Text style={styles.sectionTitle}>Summary</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statScroll} contentContainerStyle={{ gap: 10, paddingHorizontal: 16 }}>
-            <StatCard label="Total Spent"    value={`${sym}${totalExpenses.toFixed(0)}`}   color="#c0392b"  icon="⬆️" sub={`${expenses.length} transactions`} />
-            <StatCard label="Total Income"   value={`${sym}${totalIncome.toFixed(0)}`}    color="#27ae60"  icon="⬇️" sub={`${income.length} transactions`} />
-            <StatCard label="Net Flow"       value={`${netFlow >= 0 ? '+' : ''}${sym}${netFlow.toFixed(0)}`} color={netFlow >= 0 ? '#27ae60' : '#c0392b'} icon="↕️" />
-            <StatCard label="Savings Rate"   value={`${savingsRate.toFixed(1)}%`}          color="#2980b9"  icon="💰" />
-            <StatCard label="Avg Expense"    value={`${sym}${avgExpensePerTx.toFixed(0)}`} color="#9b59b6"  icon="📊" />
-            <StatCard label="Largest Spend"  value={`${sym}${largestExpense.toFixed(0)}`}  color="#e67e22"  icon="🔺" />
-            <StatCard label="Transfers"      value={`${sym}${totalTransfers.toFixed(0)}`}  color="#7f8c8d"  icon="↔️" sub={`${transfers.length / 2 | 0} transfers`} />
-          </ScrollView>
-
-          {/* Net flow bar */}
+          {/* Summary stats */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Income vs Expenses</Text>
-            <View style={styles.flowBar}>
-              {totalIncome + totalExpenses > 0 && (
-                <>
-                  <View style={[styles.flowSegment, { flex: totalIncome, backgroundColor: '#27ae60' }]} />
-                  <View style={[styles.flowSegment, { flex: totalExpenses, backgroundColor: '#c0392b' }]} />
-                </>
-              )}
-            </View>
-            <View style={styles.flowLegend}>
-              <View style={styles.flowLegendItem}>
-                <View style={[styles.flowDot, { backgroundColor: '#27ae60' }]} />
-                <Text style={styles.flowLegendText}>Income {sym}{totalIncome.toFixed(0)}</Text>
-              </View>
-              <View style={styles.flowLegendItem}>
-                <View style={[styles.flowDot, { backgroundColor: '#c0392b' }]} />
-                <Text style={styles.flowLegendText}>Expenses {sym}{totalExpenses.toFixed(0)}</Text>
-              </View>
+            <Text style={styles.cardTitle}>Summary</Text>
+            <StatRow label="Total Spent"       value={`${sym}${totalExpenses.toFixed(2)}`}  color="#c0392b" />
+            <StatRow label="Transactions"      value={`${expenses.length}`} />
+            <StatRow label="Average Expense"   value={expenses.length > 0 ? `${sym}${(totalExpenses / expenses.length).toFixed(2)}` : '—'} />
+            <StatRow label="Largest Expense"   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
+            <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
+              <Text style={statStyles.label}>Top Category</Text>
+              <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].label, 0) : '#aaa' }]}>
+                {categorySlices[0]?.label ?? '—'}
+              </Text>
             </View>
           </View>
 
-          {/* Daily spending chart */}
+          {/* Category pie */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Daily Spending (14 days)</Text>
-            <BarChart data={dailySpending} color={BRAND} />
+            <Text style={styles.cardTitle}>By Category</Text>
+            <CategoryPieChart slices={categorySlices} total={totalExpenses} sym={sym} accentColor="#c0392b" />
           </View>
+
+          {/* Category breakdown */}
+          {categorySlices.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Category Breakdown</Text>
+              {categorySlices.map((cat, i) => [
+                <TouchableOpacity
+                  key={`cat-${i}`}
+                  style={styles.catRow}
+                  onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.catDot, { backgroundColor: cat.color }]} />
+                  <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
+                  <Text style={styles.catPct}>{cat.pct.toFixed(1)}%</Text>
+                  <Text style={[styles.catAmount, { color: cat.color }]}>{sym}{cat.value.toFixed(0)}</Text>
+                  <Text style={styles.catArrow}>{selectedCategory === cat.label ? '▲' : '▼'}</Text>
+                </TouchableOpacity>,
+
+                selectedCategory === cat.label && catDrilledTxs.length > 0 && (
+                  <View key={`drill-${i}`} style={styles.drillBox}>
+                    {catDrilledTxs.slice(0, 8).map((tx, idx) => (
+                      <TouchableOpacity key={tx.id} style={[styles.drillRow, idx < Math.min(catDrilledTxs.length, 8) - 1 && styles.drillBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.drillDesc} numberOfLines={1}>{tx.description || '—'}</Text>
+                          <Text style={styles.drillDate}>
+                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </Text>
+                        </View>
+                        <Text style={styles.drillAmount}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    {catDrilledTxs.length > 8 && (
+                      <Text style={styles.drillMore}>+{catDrilledTxs.length - 8} more</Text>
+                    )}
+                  </View>
+                ),
+              ])}
+            </View>
+          )}
 
           {/* Top expenses */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Top Expenses</Text>
-            {topExpenses.length === 0 ? (
+            {expenses.length === 0 ? (
               <Text style={styles.emptyCard}>No expenses in this period</Text>
-            ) : topExpenses.map((tx, i) => (
-              <View key={tx.id} style={[styles.topRow, i < topExpenses.length - 1 && styles.topBorder]}>
+            ) : [...expenses].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 5).map((tx, i, arr) => (
+              <TouchableOpacity key={tx.id} style={[styles.topRow, i < arr.length - 1 && styles.topBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
                 <Text style={styles.topRank}>#{i + 1}</Text>
                 <View style={styles.topMid}>
                   <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
                   <Text style={styles.topMeta}>{tx.category ?? tx.source}</Text>
                 </View>
-                <Text style={styles.topAmount}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
-              </View>
+                <Text style={[styles.topAmount, { color: '#c0392b' }]}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
+              </TouchableOpacity>
             ))}
           </View>
 
-          {/* Transaction type split */}
+          {/* 6-month spending trend */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Transaction Types</Text>
-            <View style={styles.typeGrid}>
-              {[
-                { label: 'Expenses',  count: expenses.length,  color: '#c0392b', icon: '⬆️' },
-                { label: 'Income',    count: income.length,    color: '#27ae60', icon: '⬇️' },
-                { label: 'Transfers', count: Math.floor(transfers.length / 2), color: '#7f8c8d', icon: '↔️' },
-                { label: 'Manual',    count: filtered.filter(t => t.source === 'manual').length, color: BRAND, icon: '✏️' },
-                { label: 'Monobank',  count: filtered.filter(t => t.source === 'mono').length, color: '#f39c12', icon: '🟡' },
-              ].map((item, i) => (
-                <View key={i} style={[styles.typeCard, { borderTopColor: item.color }]}>
-                  <Text style={styles.typeIcon}>{item.icon}</Text>
-                  <Text style={[styles.typeCount, { color: item.color }]}>{item.count}</Text>
-                  <Text style={styles.typeLabel}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </>
-      )}
-
-      {/* ════════════════════════════════════════════════════════════════
-          CATEGORIES TAB
-      ════════════════════════════════════════════════════════════════ */}
-      {viewTab === 'categories' && (
-        <>
-          <Text style={styles.sectionTitle}>Spending by Category</Text>
-
-          {categorySlices.length === 0 ? (
-            <View style={styles.emptySection}>
-              <Text style={styles.emptyIcon}>🏷️</Text>
-              <Text style={styles.emptyText}>No categorised expenses yet</Text>
-            </View>
-          ) : (
-            <>
-              {/* Visual bar breakdown */}
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Category Breakdown</Text>
-                <View style={styles.stackBar}>
-                  {categorySlices.map((s, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={[styles.stackSegment, { flex: s.pct, backgroundColor: s.color }]}
-                      onPress={() => setSelectedCategory(selectedCategory === s.label ? null : s.label)}
-                    />
-                  ))}
-                </View>
-                <DonutLegend slices={categorySlices} />
-              </View>
-
-              {/* Category cards */}
-              {categorySlices.map((cat, i) => [
-                <TouchableOpacity
-                  key={`cat-${i}`}
-                  style={[styles.catCard, selectedCategory === cat.label && { borderColor: cat.color, borderWidth: 2 }]}
-                  onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.catCardLeft}>
-                    <View style={[styles.catCardDot, { backgroundColor: cat.color }]} />
-                    <View>
-                      <Text style={styles.catCardLabel}>{cat.label}</Text>
-                      <Text style={styles.catCardPct}>{cat.pct.toFixed(1)}% of expenses</Text>
-                    </View>
-                  </View>
-                  <View style={styles.catCardRight}>
-                    <Text style={[styles.catCardAmount, { color: cat.color }]}>{sym}{cat.value.toFixed(2)}</Text>
-                    <Text style={styles.catCardCount}>
-                      {expenses.filter(tx => (tx.category ?? 'Other') === cat.label).length} tx
-                    </Text>
-                  </View>
-                </TouchableOpacity>,
-                selectedCategory === cat.label && catFiltered.length > 0 && (
-                  <View key={`drill-${i}`} style={styles.card}>
-                    <View style={styles.drillHeader}>
-                      <Text style={styles.cardTitle}>{selectedCategory} — Transactions</Text>
-                      <TouchableOpacity onPress={() => setSelectedCategory(null)}>
-                        <Text style={styles.drillClose}>✕ Clear</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {catFiltered.slice(0, 10).map((tx, idx) => (
-                      <View key={tx.id} style={[styles.topRow, idx < Math.min(catFiltered.length, 10) - 1 && styles.topBorder]}>
-                        <View style={styles.topMid}>
-                          <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
-                          <Text style={styles.topMeta}>
-                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                          </Text>
-                        </View>
-                        <Text style={[styles.topAmount, tx.amount < 0 ? { color: '#c0392b' } : { color: '#27ae60' }]}>
-                          {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                        </Text>
-                      </View>
-                    ))}
-                    {catFiltered.length > 10 && (
-                      <Text style={styles.moreText}>+{catFiltered.length - 10} more transactions</Text>
-                    )}
-                  </View>
-                )
-              ])}
-
-            </>
-          )}
-        </>
-      )}
-
-      {/* ════════════════════════════════════════════════════════════════
-          TRENDS TAB
-      ════════════════════════════════════════════════════════════════ */}
-      {viewTab === 'trends' && (
-        <>
-          <Text style={styles.sectionTitle}>Monthly Trends</Text>
-
-          {/* Monthly income chart */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Monthly Income</Text>
-            <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.inc }))} color="#27ae60" />
+            <Text style={styles.cardTitle}>6-Month Trend</Text>
+            <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.exp }))} color="#c0392b" sym={sym} />
           </View>
 
-          {/* Monthly expenses chart */}
+          {/* Spending habits by weekday */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Monthly Expenses</Text>
-            <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.exp }))} color="#c0392b" />
-          </View>
-
-          {/* Month-by-month table */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Month Comparison</Text>
-            {monthlyTrend.map((m, i) => {
-              const net = m.inc - m.exp;
-              return (
-                <View key={i} style={[styles.trendRow, i < monthlyTrend.length - 1 && styles.topBorder]}>
-                  <Text style={styles.trendMonth}>{m.label}</Text>
-                  <View style={styles.trendMini}>
-                    <Text style={[styles.trendInc]}>+{sym}{m.inc.toFixed(0)}</Text>
-                    <Text style={[styles.trendExp]}>−{sym}{m.exp.toFixed(0)}</Text>
-                  </View>
-                  <Text style={[styles.trendNet, { color: net >= 0 ? '#27ae60' : '#c0392b' }]}>
-                    {net >= 0 ? '+' : ''}{sym}{net.toFixed(0)}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Streak / habits */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Spending Habits</Text>
+            <Text style={styles.cardTitle}>Spending by Weekday</Text>
             {(() => {
               const byWeekday = Array(7).fill(0);
               const byWeekdayCount = Array(7).fill(0);
@@ -526,7 +618,7 @@ export default function AnalyticsScreen() {
                   {days.map((d, i) => (
                     <View key={i} style={styles.weekdayCol}>
                       <View style={styles.weekdayTrack}>
-                        <View style={[styles.weekdayBar, { height: `${(byWeekday[i] / maxDay) * 100}%`, backgroundColor: BRAND + 'cc' }]} />
+                        <View style={[styles.weekdayBar, { height: `${(byWeekday[i] / maxDay) * 100}%`, backgroundColor: '#c0392b' + 'cc' }]} />
                       </View>
                       <Text style={styles.weekdayLabel}>{d}</Text>
                       <Text style={styles.weekdayCount}>{byWeekdayCount[i]}</Text>
@@ -537,122 +629,127 @@ export default function AnalyticsScreen() {
             })()}
             <Text style={styles.habitNote}>Height = total spent · Number = transaction count</Text>
           </View>
-
-          {/* Rolling average */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Insights</Text>
-            {[
-              {
-                icon: '📅',
-                label: 'Most active day',
-                value: (() => {
-                  const byDay: Record<string, number> = {};
-                  filtered.forEach(tx => {
-                    const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-                    const key = d.toLocaleDateString('en-GB', { weekday: 'long' });
-                    byDay[key] = (byDay[key] ?? 0) + 1;
-                  });
-                  const top = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
-                  return top ? top[0] : '—';
-                })(),
-              },
-              {
-                icon: '🏷️',
-                label: 'Top category',
-                value: categorySlices[0]?.label ?? '—',
-              },
-              {
-                icon: '📉',
-                label: 'Biggest month spend',
-                value: `${sym}${Math.max(...monthlyTrend.map(m => m.exp), 0).toFixed(0)}`,
-              },
-              {
-                icon: '📈',
-                label: 'Biggest month income',
-                value: `${sym}${Math.max(...monthlyTrend.map(m => m.inc), 0).toFixed(0)}`,
-              },
-              {
-                icon: '🔢',
-                label: 'Avg transactions/month',
-                value: `${(filtered.length / Math.max(monthlyTrend.filter(m => m.exp + m.inc > 0).length, 1)).toFixed(1)}`,
-              },
-            ].map((item, i, arr) => (
-              <View key={i} style={[styles.insightRow, i < arr.length - 1 && styles.topBorder]}>
-                <Text style={styles.insightIcon}>{item.icon}</Text>
-                <Text style={styles.insightLabel}>{item.label}</Text>
-                <Text style={styles.insightValue}>{item.value}</Text>
-              </View>
-            ))}
-          </View>
         </>
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          ACCOUNTS TAB
+          INCOME TAB
       ════════════════════════════════════════════════════════════════ */}
-      {viewTab === 'accounts' && (
+      {mainTab === 'income' && (
         <>
-          <Text style={styles.sectionTitle}>Per-Account Breakdown</Text>
-
-          {accountBreakdown.map((acc, i) => (
-            <View key={acc.id} style={styles.accAnalyticsCard}>
-              <View style={styles.accAnalyticsHeader}>
-                <Text style={styles.accAnalyticsName}>{acc.name}</Text>
-                <View style={styles.accAnalyticsBadge}>
-                  <Text style={styles.accAnalyticsBadgeText}>{acc.txCount} tx</Text>
-                </View>
-              </View>
-
-              <View style={styles.accStatsRow}>
-                <View style={styles.accStat}>
-                  <Text style={styles.accStatLabel}>Received</Text>
-                  <Text style={[styles.accStatValue, { color: '#27ae60' }]}>+{sym}{acc.received.toFixed(0)}</Text>
-                </View>
-                <View style={styles.accStatDivider} />
-                <View style={styles.accStat}>
-                  <Text style={styles.accStatLabel}>Spent</Text>
-                  <Text style={[styles.accStatValue, { color: '#c0392b' }]}>−{sym}{acc.spent.toFixed(0)}</Text>
-                </View>
-                <View style={styles.accStatDivider} />
-                <View style={styles.accStat}>
-                  <Text style={styles.accStatLabel}>Net</Text>
-                  <Text style={[styles.accStatValue, { color: acc.received - acc.spent >= 0 ? '#27ae60' : '#c0392b' }]}>
-                    {acc.received - acc.spent >= 0 ? '+' : ''}{sym}{(acc.received - acc.spent).toFixed(0)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Mini spend vs receive bar */}
-              {(acc.received + acc.spent) > 0 && (
-                <View style={styles.accFlowBar}>
-                  <View style={[styles.accFlowIn,  { flex: acc.received }]} />
-                  <View style={[styles.accFlowOut, { flex: acc.spent }]} />
-                </View>
-              )}
-
-              {/* Categories used in this account */}
-              {(() => {
-                const accCats: Record<string, number> = {};
-                filtered.filter(tx => tx.account_id === acc.id && tx.amount < 0).forEach(tx => {
-                  const k = tx.category ?? 'Other';
-                  accCats[k] = (accCats[k] ?? 0) + Math.abs(tx.amount);
-                });
-                const top3 = Object.entries(accCats).sort((a, b) => b[1] - a[1]).slice(0, 3);
-                if (top3.length === 0) return null;
-                return (
-                  <View style={styles.accCatRow}>
-                    {top3.map(([label, val], j) => (
-                      <View key={j} style={[styles.accCatChip, { backgroundColor: getCatColor(label, j) + '22' }]}>
-                        <Text style={[styles.accCatChipText, { color: getCatColor(label, j) }]}>
-                          {label} · {sym}{val.toFixed(0)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                );
-              })()}
+          {/* Summary stats */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Summary</Text>
+            <StatRow label="Total Income"      value={`${sym}${totalIncome.toFixed(2)}`}  color="#27ae60" />
+            <StatRow label="Transactions"      value={`${income.length}`} />
+            <StatRow label="Average Income"    value={income.length > 0 ? `${sym}${(totalIncome / income.length).toFixed(2)}` : '—'} />
+            <StatRow label="Largest Income"    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
+            <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
+              <Text style={statStyles.label}>Top Source</Text>
+              <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].label, 0) : '#aaa' }]}>
+                {incomeSlices[0]?.label ?? '—'}
+              </Text>
             </View>
-          ))}
+          </View>
+
+          {/* Category pie */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>By Source / Category</Text>
+            <CategoryPieChart slices={incomeSlices} total={totalIncome} sym={sym} accentColor="#27ae60" />
+          </View>
+
+          {/* Category breakdown */}
+          {incomeSlices.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Category Breakdown</Text>
+              {incomeSlices.map((cat, i) => [
+                <TouchableOpacity
+                  key={`cat-${i}`}
+                  style={styles.catRow}
+                  onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.catDot, { backgroundColor: cat.color }]} />
+                  <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
+                  <Text style={styles.catPct}>{cat.pct.toFixed(1)}%</Text>
+                  <Text style={[styles.catAmount, { color: cat.color }]}>{sym}{cat.value.toFixed(0)}</Text>
+                  <Text style={styles.catArrow}>{selectedCategory === cat.label ? '▲' : '▼'}</Text>
+                </TouchableOpacity>,
+
+                selectedCategory === cat.label && catDrilledTxs.length > 0 && (
+                  <View key={`drill-${i}`} style={styles.drillBox}>
+                    {catDrilledTxs.slice(0, 8).map((tx, idx) => (
+                      <TouchableOpacity key={tx.id} style={[styles.drillRow, idx < Math.min(catDrilledTxs.length, 8) - 1 && styles.drillBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.drillDesc} numberOfLines={1}>{tx.description || '—'}</Text>
+                          <Text style={styles.drillDate}>
+                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </Text>
+                        </View>
+                        <Text style={[styles.drillAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    {catDrilledTxs.length > 8 && (
+                      <Text style={styles.drillMore}>+{catDrilledTxs.length - 8} more</Text>
+                    )}
+                  </View>
+                ),
+              ])}
+            </View>
+          )}
+
+          {/* Top income transactions */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Top Income</Text>
+            {income.length === 0 ? (
+              <Text style={styles.emptyCard}>No income in this period</Text>
+            ) : [...income].sort((a, b) => b.amount - a.amount).slice(0, 5).map((tx, i, arr) => (
+              <TouchableOpacity key={tx.id} style={[styles.topRow, i < arr.length - 1 && styles.topBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
+                <Text style={styles.topRank}>#{i + 1}</Text>
+                <View style={styles.topMid}>
+                  <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
+                  <Text style={styles.topMeta}>{tx.category ?? tx.source}</Text>
+                </View>
+                <Text style={[styles.topAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 6-month income trend */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>6-Month Trend</Text>
+            <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.inc }))} color="#27ae60" sym={sym} />
+          </View>
+
+          {/* Income by weekday */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Income by Weekday</Text>
+            {(() => {
+              const byWeekday = Array(7).fill(0);
+              const byWeekdayCount = Array(7).fill(0);
+              income.forEach(tx => {
+                const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+                byWeekday[d.getDay()] += tx.amount;
+                byWeekdayCount[d.getDay()]++;
+              });
+              const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              const maxDay = Math.max(...byWeekday, 1);
+              return (
+                <View style={styles.weekdayRow}>
+                  {days.map((d, i) => (
+                    <View key={i} style={styles.weekdayCol}>
+                      <View style={styles.weekdayTrack}>
+                        <View style={[styles.weekdayBar, { height: `${(byWeekday[i] / maxDay) * 100}%`, backgroundColor: '#27ae60cc' }]} />
+                      </View>
+                      <Text style={styles.weekdayLabel}>{d}</Text>
+                      <Text style={styles.weekdayCount}>{byWeekdayCount[i]}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
+            <Text style={styles.habitNote}>Height = total received · Number = transaction count</Text>
+          </View>
         </>
       )}
 
@@ -674,29 +771,48 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#1a1a1a' },
   headerSub: { fontSize: 13, color: '#aaa', marginTop: 2 },
 
-  // Period
-  periodScroll: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  periodContainer: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
-  periodChip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#f0f0f0' },
+  // Range navigator
+  rangeRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingVertical: 6, paddingRight: 10,
+  },
+  navArrow: { padding: 10 },
+  navArrowText: { fontSize: 26, color: BRAND, fontWeight: '300', lineHeight: 28 },
+  navArrowPlaceholder: { width: 44 },
+  rangeLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: '#1a1a1a', textAlign: 'center' },
+  modeButton: { backgroundColor: '#f0f0f0', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 8 },
+  modeButtonText: { fontSize: 12, fontWeight: '700', color: '#555' },
+
+  // Mode dropdown
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 160, paddingRight: 16 },
+  modeMenu: { backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', minWidth: 140, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  modeMenuItem: { paddingVertical: 13, paddingHorizontal: 18 },
+  modeMenuItemActive: { backgroundColor: BRAND + '15' },
+  modeMenuItemText: { fontSize: 14, fontWeight: '600', color: '#333' },
+  modeMenuItemTextActive: { color: BRAND, fontWeight: '800' },
+
+  // Period chips
+  periodContainer: { paddingHorizontal: 8, paddingVertical: 6, gap: 8, alignItems: 'center' },
+  periodChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#f0f0f0' },
   periodChipActive: { backgroundColor: BRAND },
-  periodChipText: { fontSize: 13, fontWeight: '700', color: '#888' },
+  periodChipText: { fontSize: 12, fontWeight: '700', color: '#888' },
   periodChipTextActive: { color: '#fff' },
 
-  // View tabs
-  viewTabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0', marginBottom: 16 },
-  viewTab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  viewTabActive: { borderBottomColor: BRAND },
-  viewTabIcon: { fontSize: 16, marginBottom: 2 },
-  viewTabLabel: { fontSize: 10, fontWeight: '600', color: '#aaa', textTransform: 'uppercase', letterSpacing: 0.3 },
-  viewTabLabelActive: { color: BRAND },
-
-  sectionTitle: {
-    fontSize: 12, fontWeight: '700', color: '#888', textTransform: 'uppercase',
-    letterSpacing: 0.8, marginHorizontal: 16, marginBottom: 10, marginTop: 4,
+  // Main tabs
+  mainTabs: {
+    flexDirection: 'row', backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#f0f0f0', marginBottom: 16,
   },
-
-  // Stat scroll
-  statScroll: { marginBottom: 16 },
+  mainTab: {
+    flex: 1, alignItems: 'center', paddingVertical: 14,
+    borderBottomWidth: 3, borderBottomColor: 'transparent',
+  },
+  mainTabActiveSpend:  { borderBottomColor: '#c0392b' },
+  mainTabActiveIncome: { borderBottomColor: '#27ae60' },
+  mainTabText: { fontSize: 14, fontWeight: '700', color: '#aaa' },
+  mainTabTextActiveSpend:  { color: '#c0392b' },
+  mainTabTextActiveIncome: { color: '#27ae60' },
+  mainTabAmount: { fontSize: 12, fontWeight: '600', marginTop: 2 },
 
   // Cards
   card: {
@@ -707,70 +823,33 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14, fontWeight: '700', color: '#1a1a1a', marginBottom: 14 },
   emptyCard: { fontSize: 14, color: '#bbb', textAlign: 'center', paddingVertical: 12 },
 
-  // Flow bar
-  flowBar: { flexDirection: 'row', height: 10, borderRadius: 6, overflow: 'hidden', marginBottom: 12, backgroundColor: '#f0f0f0' },
-  flowSegment: { height: '100%' },
-  flowLegend: { flexDirection: 'row', gap: 20 },
-  flowLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  flowDot: { width: 8, height: 8, borderRadius: 4 },
-  flowLegendText: { fontSize: 12, color: '#666', fontWeight: '500' },
+  // Category rows inside breakdown card
+  catRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  catDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  catLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
+  catPct: { fontSize: 12, color: '#aaa', width: 38, textAlign: 'right' },
+  catAmount: { fontSize: 14, fontWeight: '700', width: 64, textAlign: 'right' },
+  catArrow: { fontSize: 10, color: '#ccc', width: 14, textAlign: 'center' },
 
-  // Top expenses
+  // Drill-down box
+  drillBox: { backgroundColor: '#fafafa', borderRadius: 12, padding: 12, marginBottom: 4 },
+  drillRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  drillBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  drillDesc: { fontSize: 13, fontWeight: '600', color: '#1a1a1a' },
+  drillDate: { fontSize: 11, color: '#aaa', marginTop: 1 },
+  drillAmount: { fontSize: 13, fontWeight: '700', color: '#c0392b' },
+  drillMore: { textAlign: 'center', color: '#bbb', fontSize: 12, paddingTop: 8 },
+
+  // Top list
   topRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10 },
   topBorder: { borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   topRank: { fontSize: 12, fontWeight: '700', color: '#ccc', width: 24 },
   topMid: { flex: 1 },
   topDesc: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
   topMeta: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  topAmount: { fontSize: 14, fontWeight: '700', color: '#c0392b' },
+  topAmount: { fontSize: 14, fontWeight: '700' },
 
-  // Type grid
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  typeCard: {
-    flex: 1, minWidth: 80, backgroundColor: '#fafafa', borderRadius: 12,
-    padding: 12, alignItems: 'center', borderTopWidth: 3,
-  },
-  typeIcon: { fontSize: 18, marginBottom: 4 },
-  typeCount: { fontSize: 22, fontWeight: '800' },
-  typeLabel: { fontSize: 10, color: '#aaa', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3 },
-
-  // Categories tab
-  stackBar: {
-    flexDirection: 'row', height: 14, borderRadius: 8, overflow: 'hidden',
-    marginBottom: 20, gap: 1,
-  },
-  stackSegment: { height: '100%', minWidth: 4 },
-
-  catCard: {
-    backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, marginBottom: 10,
-    padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderWidth: 1, borderColor: '#f0f0f0',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
-  },
-  catCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  catCardDot: { width: 12, height: 12, borderRadius: 6 },
-  catCardLabel: { fontSize: 15, fontWeight: '700', color: '#1a1a1a' },
-  catCardPct: { fontSize: 11, color: '#aaa', marginTop: 2 },
-  catCardRight: { alignItems: 'flex-end' },
-  catCardAmount: { fontSize: 16, fontWeight: '800' },
-  catCardCount: { fontSize: 11, color: '#aaa', marginTop: 2 },
-
-  drillHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  drillClose: { fontSize: 12, color: '#aaa', fontWeight: '600' },
-  moreText: { textAlign: 'center', color: '#bbb', fontSize: 12, paddingTop: 10 },
-
-  emptySection: { alignItems: 'center', paddingVertical: 48 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 15, color: '#aaa' },
-
-  // Trends tab
-  trendRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  trendMonth: { fontSize: 14, fontWeight: '700', color: '#1a1a1a', width: 44 },
-  trendMini: { flex: 1, paddingHorizontal: 8 },
-  trendInc: { fontSize: 12, color: '#27ae60', fontWeight: '600' },
-  trendExp: { fontSize: 12, color: '#c0392b', fontWeight: '600' },
-  trendNet: { fontSize: 14, fontWeight: '800', width: 80, textAlign: 'right' },
-
+  // Weekday chart
   weekdayRow: { flexDirection: 'row', gap: 6, height: 90, alignItems: 'flex-end' },
   weekdayCol: { flex: 1, alignItems: 'center' },
   weekdayTrack: { flex: 1, width: '80%', backgroundColor: '#f0f0f0', borderRadius: 4, justifyContent: 'flex-end', overflow: 'hidden' },
@@ -778,31 +857,4 @@ const styles = StyleSheet.create({
   weekdayLabel: { fontSize: 9, color: '#aaa', marginTop: 4 },
   weekdayCount: { fontSize: 10, fontWeight: '700', color: '#888' },
   habitNote: { fontSize: 10, color: '#ccc', textAlign: 'center', marginTop: 10 },
-
-  insightRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
-  insightIcon: { fontSize: 18, width: 28 },
-  insightLabel: { flex: 1, fontSize: 14, color: '#555' },
-  insightValue: { fontSize: 14, fontWeight: '800', color: '#1a1a1a' },
-
-  // Accounts tab
-  accAnalyticsCard: {
-    backgroundColor: '#fff', borderRadius: 20, marginHorizontal: 16, marginBottom: 14,
-    padding: 18, borderWidth: 1, borderColor: '#f0f0f0',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
-  },
-  accAnalyticsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  accAnalyticsName: { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
-  accAnalyticsBadge: { backgroundColor: '#f0f0f0', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  accAnalyticsBadgeText: { fontSize: 11, fontWeight: '700', color: '#888' },
-  accStatsRow: { flexDirection: 'row', marginBottom: 14 },
-  accStat: { flex: 1, alignItems: 'center' },
-  accStatDivider: { width: 1, backgroundColor: '#f0f0f0', marginVertical: 4 },
-  accStatLabel: { fontSize: 11, color: '#aaa', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.3 },
-  accStatValue: { fontSize: 16, fontWeight: '800' },
-  accFlowBar: { flexDirection: 'row', height: 6, borderRadius: 4, overflow: 'hidden', marginBottom: 12, gap: 2 },
-  accFlowIn: { backgroundColor: '#27ae60', borderRadius: 4 },
-  accFlowOut: { backgroundColor: '#c0392b', borderRadius: 4 },
-  accCatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  accCatChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
-  accCatChipText: { fontSize: 11, fontWeight: '600' },
 });

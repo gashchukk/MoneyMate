@@ -22,7 +22,7 @@ const TYPE_ICON: Record<string, string> = {
   platinum: '🔘',
   iron: '⚙️',
   fop: '🏢',
-  yellow: '💛',
+  yellow: '🇺🇦',
   eAid: '🟢',
 
   cash: '💵',
@@ -77,8 +77,11 @@ export default function AccountsScreen() {
     }, [fetchAll])
   );
 
+  // Personal funds = balance minus credit limit (own money, excluding credit line)
+  const personalBalance = (acc: Account) => (acc.balance ?? 0) - (acc.credit_limit ?? 0);
+
   const totalBalance = accounts.reduce((sum, acc) => {
-    return sum + (convertToSystem(acc.balance ?? 0, acc.currency_code, currency, rates) ?? 0);
+    return sum + (convertToSystem(personalBalance(acc), acc.currency_code, currency, rates) ?? 0);
   }, 0);
 
   if (loading) {
@@ -162,7 +165,7 @@ export default function AccountsScreen() {
                 </View>
                 <View style={styles.accountRight}>
                   <View style={styles.accountBalanceRow}>
-                    <View>
+                    <View style={{ alignItems: 'flex-end' }}>
                       <Text
                         style={[
                           styles.accountBalance,
@@ -171,6 +174,20 @@ export default function AccountsScreen() {
                       >
                         {currencySymbol(acc.currency_code)}{(acc.balance ?? 0).toFixed(2)}
                       </Text>
+                      {(acc.credit_limit ?? 0) > 0 && (
+                        <>
+                          <Text style={styles.creditRow}>
+                            <Text style={styles.creditLabel}>Credit  </Text>
+                            <Text style={styles.creditValue}>{currencySymbol(acc.currency_code)}{acc.credit_limit!.toFixed(2)}</Text>
+                          </Text>
+                          <Text style={styles.creditRow}>
+                            <Text style={styles.creditLabel}>Personal  </Text>
+                            <Text style={[styles.creditValue, personalBalance(acc) < 0 && { color: NEGATIVE }]}>
+                              {currencySymbol(acc.currency_code)}{personalBalance(acc).toFixed(2)}
+                            </Text>
+                          </Text>
+                        </>
+                      )}
                       {approx !== null && (
                         <Text style={styles.accountApprox}>
                           {t('approx', language)} {SYSTEM_SYMBOL[currency]}{approx.toFixed(2)}
@@ -221,13 +238,14 @@ const styles = StyleSheet.create({
   },
   ratesRow: { flexDirection: 'row', gap: 12, marginHorizontal: 16, marginBottom: 20 },
   rateCard: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 16, alignItems: 'center',
+    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: '#f0f0f0',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
-  rateFlag: { fontSize: 24, marginBottom: 6 },
-  rateCurrency: { fontSize: 12, fontWeight: '700', color: '#888', letterSpacing: 0.5 },
-  rateValue: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginTop: 2 },
+  rateFlag: { fontSize: 20 },
+  rateCurrency: { fontSize: 13, fontWeight: '700', color: '#888', flex: 1 },
+  rateValue: { fontSize: 15, fontWeight: '800', color: '#1a1a1a' },
   accountCard: {
     backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 16, marginBottom: 10, padding: 16,
     borderWidth: 1, borderColor: '#f0f0f0',
@@ -242,6 +260,9 @@ const styles = StyleSheet.create({
   accountBalanceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   accountBalance: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', textAlign: 'right' },
   accountApprox: { fontSize: 12, color: '#aaa', marginTop: 2, textAlign: 'right' },
+  creditRow: { fontSize: 12, marginTop: 2, textAlign: 'right' },
+  creditLabel: { color: '#aaa' },
+  creditValue: { color: '#555', fontWeight: '600' },
   chevron: { fontSize: 24, color: '#ccc', fontWeight: '300' },
   empty: { alignItems: 'center', marginTop: 48, paddingHorizontal: 32 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },

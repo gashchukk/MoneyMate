@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, ActivityIndicator, Alert, RefreshControl,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, t } from '@/components/AppContext';
@@ -12,6 +12,8 @@ import type { Transaction, Account } from '@/types';
 import {
   BRAND,
   DEFAULT_CATEGORIES,
+  DEFAULT_EXPENSE_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
   currencySymbol,
   currencyName,
 } from '@/constants/brand';
@@ -70,6 +72,21 @@ export default function TransactionsScreen() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
 
+  const { scrollToDate } = useLocalSearchParams<{ scrollToDate?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const dayOffsets = useRef<Record<string, number>>({});
+  const pendingScrollDate = useRef<string | null>(null);
+
+  // When a scrollToDate param arrives, switch to that month and queue a scroll
+  useEffect(() => {
+    if (!scrollToDate) return;
+    const d = new Date(scrollToDate);
+    if (isNaN(d.getTime())) return;
+    setYear(d.getFullYear());
+    setMonth(d.getMonth());
+    pendingScrollDate.current = scrollToDate;
+  }, [scrollToDate]);
+
   // Form state
   const [txMode, setTxMode] = useState<TxMode>('withdrawal');
   const [description, setDescription] = useState('');
@@ -86,7 +103,8 @@ export default function TransactionsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [customCategories, setCustomCategories] = useState<{ id: number; label: string; icon: string; color: string }[]>([]);
 
-  const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
+  const defaultCategories = txMode === 'deposit' ? DEFAULT_INCOME_CATEGORIES : DEFAULT_EXPENSE_CATEGORIES;
+  const allCategories = [...defaultCategories, ...customCategories];
 
   const resetForm = () => {
     setDescription('');
@@ -232,6 +250,7 @@ export default function TransactionsScreen() {
 
       {/* ── List ── */}
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAll(); }} tintColor={BRAND} />}
@@ -246,7 +265,18 @@ export default function TransactionsScreen() {
           const dayLabel = date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
           const dayTotal = byDay[day].reduce((s, tx) => s + tx.amount, 0);
           return (
-            <View key={day} style={styles.dayBlock}>
+            <View
+              key={day}
+              style={styles.dayBlock}
+              onLayout={(e) => {
+                dayOffsets.current[day] = e.nativeEvent.layout.y;
+                if (pendingScrollDate.current && day === pendingScrollDate.current.slice(0, 10)) {
+                  const offset = e.nativeEvent.layout.y;
+                  pendingScrollDate.current = null;
+                  setTimeout(() => scrollRef.current?.scrollTo({ y: offset, animated: true }), 100);
+                }
+              }}
+            >
               <View style={styles.dayHeader}>
                 <Text style={styles.dayLabel}>{dayLabel}</Text>
                 <Text style={[styles.dayTotal, dayTotal < 0 ? styles.negative : styles.positive]}>
@@ -304,7 +334,7 @@ export default function TransactionsScreen() {
                 <TouchableOpacity
                   key={mode.key}
                   style={[styles.modeTab, txMode === mode.key && { borderColor: mode.color, backgroundColor: mode.color + '18' }]}
-                  onPress={() => setTxMode(mode.key)}
+                  onPress={() => { setTxMode(mode.key); setCategory(null); }}
                 >
                   <Text style={styles.modeIcon}>{mode.icon}</Text>
                   <Text style={[styles.modeLabel, txMode === mode.key && { color: mode.color }]}>{mode.label}</Text>

@@ -38,14 +38,24 @@ export default function ScanScreen() {
   const [selectedAccount, setSelectedAccount] = useState<number | null>(null);
   const [result, setResult]       = useState<ReceiptResult | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [duplicateTx, setDuplicateTx] = useState<any | null>(null);
+  const [newTxTime, setNewTxTime] = useState<number | null>(null);
+
+  const stageRef = useRef<Stage>('camera');
+  stageRef.current = stage;
 
   // Fetch accounts when screen is focused
+  // Don't reset to camera if returning from transaction detail (stage === 'result')
   useFocusEffect(useCallback(() => {
     apiFetch('/accounts').then(setAccounts).catch(() => {});
-    setStage('camera');
-    setImageUri(null);
-    setResult(null);
-    setSelectedAccount(null);
+    if (stageRef.current !== 'result') {
+      setStage('camera');
+      setImageUri(null);
+      setResult(null);
+      setSelectedAccount(null);
+      setDuplicateTx(null);
+      setNewTxTime(null);
+    }
   }, []));
 
   // ── Camera permission ──────────────────────────────────────────────────────
@@ -102,6 +112,19 @@ export default function ScanScreen() {
     setStage('account');
   };
 
+  // ── Normalize receipt date string → "YYYY-MM-DD" ──────────────────────────
+  const normalizeDate = (raw: string): string | null => {
+    // Try ISO: 2024-01-15
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+    // Try DD.MM.YYYY or DD/MM/YYYY
+    const dmy = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+    // Try MM/DD/YYYY
+    const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,'0')}-${mdy[2].padStart(2,'0')}`;
+    return null;
+  };
+
   // ── Upload + scan ──────────────────────────────────────────────────────────
   const handleScan = async () => {
     if (!imageUri || !selectedAccount) return;
@@ -112,26 +135,17 @@ export default function ScanScreen() {
       const token = await SecureStore.getItemAsync('access_token');
       const formData = new FormData();
 
-      // Append image
       const filename = imageUri.split('/').pop() ?? 'receipt.jpg';
       const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
       const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
-      formData.append('file', {
-        uri: imageUri,
-        name: filename,
-        type: mimeType,
-      } as any);
-
+      formData.append('file', { uri: imageUri, name: filename, type: mimeType } as any);
       formData.append('account_id', String(selectedAccount));
 
       const API_BASE = (await import('@/constants/api')).API_BASE_URL;
       const response = await fetch(`${API_BASE}/receipts/scan`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          // DO NOT set Content-Type — let fetch set it with boundary for multipart
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -141,6 +155,31 @@ export default function ScanScreen() {
       }
 
       const data: ReceiptResult = await response.json();
+
+      // ── Duplicate check ─────────────────────────────────────────────────
+      if (data.transaction_id && data.parsed_data?.total) {
+        const total = data.parsed_data.total;
+        const receiptDateRaw = data.parsed_data.date;
+        const receiptDate = receiptDateRaw ? normalizeDate(receiptDateRaw) : null;
+
+        const allTxs = await apiFetch('/transactions');
+        const newTx = allTxs.find((tx: any) => tx.id === data.transaction_id);
+        if (newTx) setNewTxTime(newTx.time);
+        const duplicate = allTxs.find((tx: any) => {
+          if (tx.id === data.transaction_id) return false; // skip the just-created one
+          const amountMatch = Math.abs(Math.abs(tx.amount) - total) < 1.0;
+          if (!amountMatch) return false;
+          if (!receiptDate) return true; // amount matches, no date to compare
+          const txDate = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time)
+            .toISOString().slice(0, 10);
+          return txDate === receiptDate;
+        });
+
+        if (duplicate) {
+          setDuplicateTx(duplicate);
+        }
+      }
+
       setResult(data);
       setStage('result');
     } catch (e: any) {
@@ -331,6 +370,33 @@ export default function ScanScreen() {
     const acc = accounts.find(a => a.id === selectedAccount);
     const sym = cs(acc?.currency_code ?? 980);
 
+    const pushToTransactions = (timestamp: number) => {
+      const date = new Date(timestamp < 1e10 ? timestamp * 1000 : timestamp).toISOString().slice(0, 10);
+      router.push({ pathname: '/(tabs)', params: { scrollToDate: date } } as any);
+    };
+
+    const handleViewTransaction = () => {
+      const time = newTxTime;
+      setStage('camera'); setImageUri(null); setResult(null); setSelectedAccount(null); setDuplicateTx(null); setNewTxTime(null);
+      if (time) {
+        pushToTransactions(time);
+      } else {
+        router.push({ pathname: '/(tabs)' } as any);
+      }
+    };
+
+    const handleDeleteDuplicate = async () => {
+      if (!result.transaction_id) return;
+      try {
+        await apiFetch(`/transactions/${result.transaction_id}`, { method: 'DELETE' });
+        const dup = duplicateTx;
+        setDuplicateTx(null);
+        pushToTransactions(dup.time);
+      } catch (e: any) {
+        Alert.alert('Error', e.message);
+      }
+    };
+
     return (
       <ScrollView style={styles.resultRoot} contentContainerStyle={styles.resultContent} showsVerticalScrollIndicator={false}>
         <StatusBar barStyle="dark-content" />
@@ -344,6 +410,65 @@ export default function ScanScreen() {
             : <Text style={styles.successSubWarn}>No total found — no transaction created</Text>
           }
         </View>
+
+        {/* ── Duplicate warning ── */}
+        {duplicateTx && (
+          <View style={styles.dupSection}>
+            <View style={styles.dupSectionHeader}>
+              <Text style={styles.dupSectionIcon}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dupSectionTitle}>Possible Duplicate</Text>
+                <Text style={styles.dupSectionSub}>This transaction may already exist</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.dupTxCard}
+              onPress={() => {
+                const dupDate = new Date(duplicateTx.time < 1e10 ? duplicateTx.time * 1000 : duplicateTx.time)
+                  .toISOString().slice(0, 10);
+                router.push({ pathname: '/(tabs)', params: { scrollToDate: dupDate } } as any);
+              }}
+              activeOpacity={0.75}
+            >
+              <View style={styles.dupTxTop}>
+                <View style={styles.dupTxLeft}>
+                  <Text style={styles.dupTxIcon}>
+                    {duplicateTx.source === 'mono' ? '🟡' : duplicateTx.source === 'manual' ? '✏️' : '🏦'}
+                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dupTxDesc} numberOfLines={1}>
+                      {duplicateTx.description || 'Transaction'}
+                    </Text>
+                    <Text style={styles.dupTxMeta}>
+                      {new Date(duplicateTx.time < 1e10 ? duplicateTx.time * 1000 : duplicateTx.time)
+                        .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {duplicateTx.category ? `  ·  ${duplicateTx.category}` : ''}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.dupTxRight}>
+                  <Text style={[styles.dupTxAmount, duplicateTx.amount < 0 && { color: '#c0392b' }]}>
+                    {duplicateTx.amount < 0 ? '-' : '+'}{sym}{Math.abs(duplicateTx.amount).toFixed(2)}
+                  </Text>
+                  <Text style={styles.dupTxSource}>{duplicateTx.source}</Text>
+                </View>
+              </View>
+              <View style={styles.dupTxLink}>
+                <Text style={styles.dupTxLinkText}>Go to Transactions →</Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.dupBtns}>
+              <TouchableOpacity style={styles.dupKeepBtn} onPress={() => setDuplicateTx(null)}>
+                <Text style={styles.dupKeepText}>Keep Both</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dupRemoveBtn} onPress={handleDeleteDuplicate}>
+                <Text style={styles.dupRemoveText}>Remove New</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Receipt summary card */}
         <View style={styles.resultCard}>
@@ -398,15 +523,12 @@ export default function ScanScreen() {
         <View style={styles.resultActions}>
           <TouchableOpacity
             style={styles.resultDoneBtn}
-            onPress={() => { setStage('camera'); setImageUri(null); setResult(null); }}
+            onPress={() => { setStage('camera'); setImageUri(null); setResult(null); setDuplicateTx(null); }}
           >
             <Text style={styles.resultDoneBtnText}>📷  Scan Another</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.resultGoBtn}
-            onPress={() => router.replace('/(tabs)')}
-          >
-            <Text style={styles.resultGoBtnText}>View Transactions ›</Text>
+          <TouchableOpacity style={styles.resultGoBtn} onPress={handleViewTransaction}>
+            <Text style={styles.resultGoBtnText}>View Transaction ›</Text>
           </TouchableOpacity>
         </View>
 
@@ -604,6 +726,36 @@ const styles = StyleSheet.create({
   rawToggleText: { fontSize: 14, fontWeight: '600', color: '#555' },
   rawChevron: { fontSize: 12, color: '#aaa' },
   rawText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11, color: '#888', padding: 16, paddingTop: 0, lineHeight: 18 },
+
+  // ── Duplicate warning (inline) ──
+  dupSection: {
+    backgroundColor: '#fff', borderRadius: 20, marginHorizontal: 16, marginTop: 14,
+    padding: 16, borderWidth: 1.5, borderColor: '#f5a623',
+    shadowColor: '#f5a623', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2,
+  },
+  dupSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  dupSectionIcon: { fontSize: 28 },
+  dupSectionTitle: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
+  dupSectionSub: { fontSize: 12, color: '#aaa', marginTop: 1 },
+  dupTxCard: {
+    backgroundColor: '#F8F8F8', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#eee', marginBottom: 14,
+  },
+  dupTxTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dupTxLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 },
+  dupTxIcon: { fontSize: 26 },
+  dupTxDesc: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+  dupTxMeta: { fontSize: 12, color: '#aaa', marginTop: 2 },
+  dupTxRight: { alignItems: 'flex-end' },
+  dupTxAmount: { fontSize: 16, fontWeight: '800', color: '#27ae60' },
+  dupTxSource: { fontSize: 11, color: '#bbb', marginTop: 2, textTransform: 'capitalize' },
+  dupTxLink: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#eee', alignItems: 'center' },
+  dupTxLinkText: { fontSize: 13, fontWeight: '600', color: BRAND },
+  dupBtns: { flexDirection: 'row', gap: 10 },
+  dupKeepBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#e0e0e0' },
+  dupKeepText: { fontSize: 14, fontWeight: '700', color: '#555' },
+  dupRemoveBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#c0392b' },
+  dupRemoveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   resultActions: { flexDirection: 'row', gap: 12, marginHorizontal: 16, marginTop: 20 },
   resultDoneBtn: { flex: 1, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 15, alignItems: 'center', borderWidth: 1.5, borderColor: '#e0e0e0' },

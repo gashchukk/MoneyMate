@@ -19,5 +19,6 @@ export interface Account {
   type: string;
   source: string;
   balance?: number;
+  credit_limit?: number;
   currency_code: number;
 }
