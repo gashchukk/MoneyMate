@@ -54,6 +54,7 @@ class AccountResponse(BaseModel):
     source: str
     external_account_id: Optional[str] = None
     balance: Optional[float] = None
+    credit_limit: Optional[float] = None
     currency_code: Optional[int] = None
 
     model_config = {"from_attributes": True}

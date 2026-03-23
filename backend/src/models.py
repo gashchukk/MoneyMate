@@ -22,6 +22,7 @@ class Account(Base):
     source = Column(String, nullable=False)
     external_account_id = Column(String, nullable=True)
     balance = Column(Float, nullable=True)
+    credit_limit = Column(Float, nullable=True, default=0)
     currency_code = Column(Integer, nullable=True)
     created_at = Column(Integer, nullable=False)
 

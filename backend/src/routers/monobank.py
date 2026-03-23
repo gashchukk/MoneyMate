@@ -97,9 +97,12 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
         ).first()
         raw_balance = acc.get("balance")
         balance = raw_balance / 100 if raw_balance is not None else None
+        raw_credit = acc.get("creditLimit")
+        credit_limit = raw_credit / 100 if raw_credit else 0
         acc_type = acc.get("type") or "unknown"
         if existing:
             existing.balance = balance
+            existing.credit_limit = credit_limit
             existing.currency_code = acc.get("currencyCode")
             existing.name = acc_type + "card"
             existing.type = acc_type
@@ -112,6 +115,7 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
                 source="mono",
                 external_account_id=acc.get("id"),
                 balance=balance,
+                credit_limit=credit_limit,
                 currency_code=acc.get("currencyCode"),
                 created_at=int(time.time()),
             )
@@ -270,10 +274,13 @@ def mono_sync_accounts(
 
         raw_balance = acc.get("balance")
         balance = raw_balance / 100 if raw_balance is not None else None
+        raw_credit = acc.get("creditLimit")
+        credit_limit = raw_credit / 100 if raw_credit else 0
         acc_type = acc.get("type") or "unknown"
 
         if existing:
             existing.balance = balance
+            existing.credit_limit = credit_limit
             existing.currency_code = acc.get("currencyCode")
             existing.name = acc_type + "card"
             existing.type = acc_type
@@ -285,6 +292,7 @@ def mono_sync_accounts(
                 source="mono",
                 external_account_id=acc.get("id"),
                 balance=balance,
+                credit_limit=credit_limit,
                 currency_code=acc.get("currencyCode"),
                 created_at=int(time.time()),
             ))
