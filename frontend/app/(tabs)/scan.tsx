@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
 import * as SecureStore from 'expo-secure-store';
+import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
 
@@ -26,6 +27,7 @@ const cs = (code: number) => currencySymbol(code);
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function ScanScreen() {
+  const { t } = useTranslation();
   const { language } = useAppSettings();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -65,13 +67,13 @@ export default function ScanScreen() {
     return (
       <View style={styles.permissionScreen}>
         <Text style={styles.permissionIcon}>📷</Text>
-        <Text style={styles.permissionTitle}>Camera Access Needed</Text>
+        <Text style={styles.permissionTitle}>{t('camera_access_needed')}</Text>
         <Text style={styles.permissionSub}>To scan receipts, MoneyMate needs camera access.</Text>
         <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
-          <Text style={styles.permissionBtnText}>Grant Access</Text>
+          <Text style={styles.permissionBtnText}>{t('grant_access')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.permissionSkip} onPress={() => router.back()}>
-          <Text style={styles.permissionSkipText}>Go Back</Text>
+          <Text style={styles.permissionSkipText}>{t('go_back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -225,7 +227,7 @@ export default function ScanScreen() {
               <View style={[styles.corner, styles.cornerBL]} />
               <View style={[styles.corner, styles.cornerBR]} />
             </View>
-            <Text style={styles.frameHint}>Align receipt within the frame</Text>
+            <Text style={styles.frameHint}>{t('align_receipt')}</Text>
           </View>
 
           {/* Bottom controls */}
@@ -233,7 +235,7 @@ export default function ScanScreen() {
             {/* Gallery */}
             <TouchableOpacity style={styles.camSideBtn} onPress={handleGallery}>
               <Text style={styles.camSideBtnIcon}>🖼️</Text>
-              <Text style={styles.camSideBtnLabel}>Gallery</Text>
+              <Text style={styles.camSideBtnLabel}>{t('gallery')}</Text>
             </TouchableOpacity>
 
             {/* Shutter */}
@@ -247,7 +249,7 @@ export default function ScanScreen() {
               onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
             >
               <Text style={styles.camSideBtnIcon}>🔄</Text>
-              <Text style={styles.camSideBtnLabel}>Flip</Text>
+              <Text style={styles.camSideBtnLabel}>{t('flip')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -266,15 +268,15 @@ export default function ScanScreen() {
 
         {/* Dark gradient overlay at bottom */}
         <View style={styles.previewOverlay}>
-          <Text style={styles.previewTitle}>Looking good?</Text>
+          <Text style={styles.previewTitle}>{t('looking_good')}</Text>
           <Text style={styles.previewSub}>Make sure the receipt text is clear and in focus.</Text>
 
           <View style={styles.previewBtns}>
             <TouchableOpacity style={styles.retakeBtn} onPress={() => setStage('camera')}>
-              <Text style={styles.retakeBtnText}>↩ Retake</Text>
+              <Text style={styles.retakeBtnText}>{t('retake')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.useBtn} onPress={handleConfirmImage}>
-              <Text style={styles.useBtnText}>Use Photo ›</Text>
+              <Text style={styles.useBtnText}>{t('use_photo')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -297,7 +299,7 @@ export default function ScanScreen() {
 
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>Choose Account</Text>
+          <Text style={styles.sheetTitle}>{t('choose_accounts')}</Text>
           <Text style={styles.sheetSub}>The expense will be deducted from this account.</Text>
 
           <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
@@ -328,7 +330,7 @@ export default function ScanScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.backLink} onPress={() => setStage('preview')}>
-            <Text style={styles.backLinkText}>← Back to preview</Text>
+            <Text style={styles.backLinkText}>{t('back_to_preview')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -346,10 +348,10 @@ export default function ScanScreen() {
         <View style={styles.bgDim} />
         <View style={styles.processingCard}>
           <ActivityIndicator size="large" color={BRAND} style={{ marginBottom: 20 }} />
-          <Text style={styles.processingTitle}>Reading Receipt...</Text>
+          <Text style={styles.processingTitle}>{t('reading_receipt')}</Text>
           <Text style={styles.processingSub}>Extracting items, prices and totals</Text>
           <View style={styles.processingSteps}>
-            {['Uploading image', 'Running OCR', 'Parsing data', 'Creating transaction'].map((step, i) => (
+            {[t('uploading_image'), t('running_ocr'), t('parsing_data'), t('creating_transaction')].map((step, i) => (
               <View key={i} style={styles.processingStep}>
                 <ActivityIndicator size="small" color={BRAND + '88'} />
                 <Text style={styles.processingStepText}>{step}</Text>
@@ -404,7 +406,7 @@ export default function ScanScreen() {
         {/* Success banner */}
         <View style={styles.successBanner}>
           <Text style={styles.successIcon}>✅</Text>
-          <Text style={styles.successTitle}>Receipt Scanned!</Text>
+          <Text style={styles.successTitle}>{t('receipt_scanned')}</Text>
           {result.transaction_id
             ? <Text style={styles.successSub}>Transaction #{result.transaction_id} created</Text>
             : <Text style={styles.successSubWarn}>No total found — no transaction created</Text>
@@ -417,8 +419,8 @@ export default function ScanScreen() {
             <View style={styles.dupSectionHeader}>
               <Text style={styles.dupSectionIcon}>⚠️</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dupSectionTitle}>Possible Duplicate</Text>
-                <Text style={styles.dupSectionSub}>This transaction may already exist</Text>
+                <Text style={styles.dupSectionTitle}>{t('possible_duplicate')}</Text>
+                <Text style={styles.dupSectionSub}>{t('this_may_already_exist')}</Text>
               </View>
             </View>
 
@@ -455,16 +457,16 @@ export default function ScanScreen() {
                 </View>
               </View>
               <View style={styles.dupTxLink}>
-                <Text style={styles.dupTxLinkText}>Go to Transactions →</Text>
+                <Text style={styles.dupTxLinkText}>{t('go_to_transactions')}</Text>
               </View>
             </TouchableOpacity>
 
             <View style={styles.dupBtns}>
               <TouchableOpacity style={styles.dupKeepBtn} onPress={() => setDuplicateTx(null)}>
-                <Text style={styles.dupKeepText}>Keep Both</Text>
+                <Text style={styles.dupKeepText}>{t('keep_both')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.dupRemoveBtn} onPress={handleDeleteDuplicate}>
-                <Text style={styles.dupRemoveText}>Remove New</Text>
+                <Text style={styles.dupRemoveText}>{t('remove_new')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -473,14 +475,14 @@ export default function ScanScreen() {
         {/* Receipt summary card */}
         <View style={styles.resultCard}>
           <View style={styles.resultCardHeader}>
-            <Text style={styles.resultStoreName}>{parsed?.store ?? 'Unknown Store'}</Text>
+            <Text style={styles.resultStoreName}>{parsed?.store ?? t('unknown_store')}</Text>
             {parsed?.date && <Text style={styles.resultDate}>{parsed.date}</Text>}
           </View>
 
           {/* Total */}
           {parsed?.total != null && (
             <View style={styles.resultTotalRow}>
-              <Text style={styles.resultTotalLabel}>Total Charged</Text>
+              <Text style={styles.resultTotalLabel}>{t('total_charged')}</Text>
               <Text style={styles.resultTotal}>{sym}{parsed.total.toFixed(2)}</Text>
             </View>
           )}
@@ -525,10 +527,10 @@ export default function ScanScreen() {
             style={styles.resultDoneBtn}
             onPress={() => { setStage('camera'); setImageUri(null); setResult(null); setDuplicateTx(null); }}
           >
-            <Text style={styles.resultDoneBtnText}>📷  Scan Another</Text>
+            <Text style={styles.resultDoneBtnText}>{t('scan_another')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.resultGoBtn} onPress={handleViewTransaction}>
-            <Text style={styles.resultGoBtnText}>View Transaction ›</Text>
+            <Text style={styles.resultGoBtnText}>{t('view_transaction')}</Text>
           </TouchableOpacity>
         </View>
 

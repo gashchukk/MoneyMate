@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
+import { useAppSettings } from '@/components/AppContext';
 import EditAccountModal from '@/components/EditAccountModal';
 import type { Account, Transaction } from '@/types';
 import { BRAND, currencySymbol } from '@/constants/brand';
@@ -63,6 +64,7 @@ function formatDate(dateStr: string, lang: string) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function AccountDetailScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { language } = useAppSettings();
 
@@ -97,7 +99,7 @@ export default function AccountDetailScreen() {
   // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = () => {
     Alert.alert(
-      'Delete Account',
+      t('delete_account'),
       `Are you sure you want to delete "${account?.name}"? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -157,7 +159,7 @@ export default function AccountDetailScreen() {
         <View style={styles.hero}>
           {/* Back button */}
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{t('back')}</Text>
           </TouchableOpacity>
 
           {/* Account icon + name */}
@@ -193,7 +195,7 @@ export default function AccountDetailScreen() {
           {/* Action buttons */}
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.editBtn} onPress={() => setShowEdit(true)}>
-              <Text style={styles.editBtnText}>✏️  Edit</Text>
+              <Text style={styles.editBtnText}>{t('edit')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.deleteBtn}
@@ -210,12 +212,12 @@ export default function AccountDetailScreen() {
 
         {/* ── Transactions ── */}
         <View style={styles.txSection}>
-          <Text style={styles.txSectionTitle}>Transaction History</Text>
+          <Text style={styles.txSectionTitle}>{t('transaction_history')}</Text>
 
           {sortedDays.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={styles.emptyText}>No transactions yet</Text>
+              <Text style={styles.emptyText}>{t('no_transactions_yet')}</Text>
             </View>
           ) : sortedDays.map(day => {
             const dayTotal = byDay[day].reduce((s, tx) => s + tx.amount, 0);

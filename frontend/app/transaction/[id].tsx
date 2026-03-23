@@ -7,7 +7,8 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
+import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, currencySymbol, CURRENCY_NAMES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, CATEGORY_COLORS } from '@/constants/brand';
 
@@ -39,6 +40,7 @@ function formatDateTime(time: number) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TransactionDetailScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { language } = useAppSettings();
 
@@ -92,7 +94,7 @@ export default function TransactionDetailScreen() {
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = () => {
     Alert.alert(
-      'Delete Transaction',
+      t('delete_transaction'),
       'Are you sure? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -164,7 +166,7 @@ export default function TransactionDetailScreen() {
         {/* ── Nav bar ── */}
         <View style={styles.navbar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}>{t('back')}</Text>
           </TouchableOpacity>
           <Text style={styles.navTitle}>Transaction</Text>
           <View style={{ width: 60 }} />
@@ -183,14 +185,14 @@ export default function TransactionDetailScreen() {
 
         {/* ── Details Card ── */}
         <View style={styles.card}>
-          <DetailRow label="Description" value={tx.description || '—'} />
-          <DetailRow label="Date" value={date} />
+          <DetailRow label={t('description')} value={tx.description || '—'} />
+          <DetailRow label={t('date')} value={date} />
           <DetailRow label="Time" value={timeStr} />
           <DetailRow label="Account" value={account?.name ?? `Account #${tx.account_id}`} />
-          <DetailRow label="Currency" value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
-          <DetailRow label="Category" value={tx.category ?? cat.label} />
-          <DetailRow label="Source" value={tx.source} capitalize />
-          {tx.mcc != null && tx.mcc > 0 && <DetailRow label="MCC Code" value={String(tx.mcc)} last />}
+          <DetailRow label={t('currency')} value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
+          <DetailRow label={t('category')} value={tx.category ?? cat.label} />
+          <DetailRow label={t('source')} value={tx.source} capitalize />
+          {tx.mcc != null && tx.mcc > 0 && <DetailRow label={t('mcc_code')} value={String(tx.mcc)} last />}
         </View>
 
         {/* ── Edit note for Mono transactions ── */}
@@ -205,7 +207,7 @@ export default function TransactionDetailScreen() {
         {/* ── Action Buttons ── */}
         <View style={styles.actions}>
           <TouchableOpacity style={styles.editBtn} onPress={() => setShowEdit(true)}>
-            <Text style={styles.editBtnText}>✏️  Edit</Text>
+            <Text style={styles.editBtnText}>{t('edit')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
             {deleting
@@ -222,10 +224,10 @@ export default function TransactionDetailScreen() {
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.handle} />
-            <Text style={styles.modalTitle}>Edit Transaction</Text>
+            <Text style={styles.modalTitle}>{t('edit_transaction')}</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.modalLabel}>Description</Text>
+              <Text style={styles.modalLabel}>{t('description')}</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="e.g. Coffee, Salary..."
@@ -234,7 +236,7 @@ export default function TransactionDetailScreen() {
                 onChangeText={setEditDesc}
               />
 
-              <Text style={styles.modalLabel}>Amount</Text>
+              <Text style={styles.modalLabel}>{t('amount')}</Text>
               <View style={[styles.amountRow, { borderColor: amountColor + '60' }]}>
                 <Text style={[styles.amountSign, { color: amountColor }]}>
                   {isExpense ? '−' : '+'}
@@ -256,7 +258,7 @@ export default function TransactionDetailScreen() {
               </Text>
 
               {/* Date */}
-              <Text style={styles.modalLabel}>Date</Text>
+              <Text style={styles.modalLabel}>{t('date')}</Text>
               <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditTimePicker(false); setShowEditDatePicker(v => !v); }}>
                 <Text style={styles.pickerBtnText}>
                   {editDateTime.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
@@ -317,7 +319,7 @@ export default function TransactionDetailScreen() {
               </ScrollView>
 
               {/* Currency */}
-              <Text style={styles.modalLabel}>Currency</Text>
+              <Text style={styles.modalLabel}>{t('currency')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                 {Object.entries(CURRENCY_NAMES).map(([code, name]) => {
                   const numCode = parseInt(code);
@@ -335,7 +337,7 @@ export default function TransactionDetailScreen() {
               </ScrollView>
 
               {/* Category */}
-              <Text style={styles.modalLabel}>Category</Text>
+              <Text style={styles.modalLabel}>{t('category')}</Text>
               <View style={styles.categoryGrid}>
                 {(isExpense ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES).map(c => {
                   const active = editCategory === c.label;
@@ -367,7 +369,7 @@ export default function TransactionDetailScreen() {
                   style={[styles.categoryChip, styles.addCategoryChip]}
                   onPress={() => { setShowCustomCatInput(v => !v); setCustomCatInput(''); }}
                 >
-                  <Text style={styles.addCategoryText}>+ Category</Text>
+                  <Text style={styles.addCategoryText}>{t('add_category')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -404,14 +406,14 @@ export default function TransactionDetailScreen() {
 
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEdit(false)}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.saveBtn, saving && { opacity: 0.65 }]}
                   onPress={handleSave}
                   disabled={saving}
                 >
-                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                  {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t('save_changes')}</Text>}
                 </TouchableOpacity>
               </View>
             </ScrollView>

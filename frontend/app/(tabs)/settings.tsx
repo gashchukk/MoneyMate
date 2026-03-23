@@ -6,8 +6,9 @@ import {
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t, Currency, Language } from '@/components/AppContext';
+import { useAppSettings, Currency, Language } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
 
 const TYPE_ICON: Record<string, string> = {
@@ -19,6 +20,7 @@ const TYPE_ICON: Record<string, string> = {
 };
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const { currency, setCurrency, language, setLanguage } = useAppSettings();
   const [rates, setRates] = useState<{ USD: number; EUR: number } | null>(null);
   const [monoLoading, setMonoLoading] = useState(false);
@@ -190,10 +192,10 @@ export default function SettingsScreen() {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert(t('logout', language), 'Are you sure?', [
-      { text: t('cancel', language), style: 'cancel' },
+    Alert.alert(t('logout'), 'Are you sure?', [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: t('logout', language), style: 'destructive',
+        text: t('logout'), style: 'destructive',
         onPress: async () => {
           await SecureStore.deleteItemAsync('access_token');
           await SecureStore.deleteItemAsync('refresh_token');
@@ -209,11 +211,11 @@ export default function SettingsScreen() {
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('settings', language)}</Text>
+        <Text style={styles.headerTitle}>{t('settings')}</Text>
       </View>
 
       {/* ── System Currency ── */}
-      <Text style={styles.sectionTitle}>{t('system_currency', language)}</Text>
+      <Text style={styles.sectionTitle}>{t('system_currency')}</Text>
       <View style={styles.card}>
         {([
           { c: 'UAH' as Currency, flag: '🇺🇦', name: 'Ukrainian Hryvnia', rate: '1.00 ₴' },
@@ -238,7 +240,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Language ── */}
-      <Text style={styles.sectionTitle}>{t('language', language)}</Text>
+      <Text style={styles.sectionTitle}>{t('language')}</Text>
       <View style={styles.card}>
         {([['en', '🇬🇧', 'english'], ['uk', '🇺🇦', 'ukrainian']] as [Language, string, string][]).map(([code, flag, key], i, arr) => (
           <TouchableOpacity
@@ -246,7 +248,7 @@ export default function SettingsScreen() {
             style={[styles.optionRow, i < arr.length - 1 && styles.optionBorder]}
             onPress={() => setLanguage(code)}
           >
-            <Text style={styles.optionLabel}>{flag} {t(key, language)}</Text>
+            <Text style={styles.optionLabel}>{flag} {t(key)}</Text>
             <View style={[styles.radio, language === code && styles.radioActive]}>
               {language === code && <View style={styles.radioDot} />}
             </View>
@@ -260,14 +262,14 @@ export default function SettingsScreen() {
         <TouchableOpacity style={styles.actionRow} onPress={() => setShowChangePw(true)}>
           <View style={styles.actionLeft}>
             <Text style={styles.actionIcon}>🔑</Text>
-            <Text style={styles.actionLabel}>Change Password</Text>
+            <Text style={styles.actionLabel}>{t('change_password')}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
       </View>
 
       {/* ── Monobank ── */}
-      <Text style={styles.sectionTitle}>{t('monobank', language)}</Text>
+      <Text style={styles.sectionTitle}>{t('monobank')}</Text>
       <View style={styles.card}>
         {/* Status banner */}
         {monoStatus && (
@@ -290,7 +292,7 @@ export default function SettingsScreen() {
             <Text style={styles.actionIcon}>{monoStatus?.linked ? '✅' : '🟡'}</Text>
             <View>
               <Text style={styles.actionLabel}>
-                {monoStatus?.linked ? 'Relink Monobank' : t('link_monobank', language)}
+                {monoStatus?.linked ? 'Relink Monobank' : t('link_monobank')}
               </Text>
               {waitingForMono
                 ? <Text style={styles.actionHint}>Waiting for approval in Monobank app…</Text>
@@ -312,7 +314,7 @@ export default function SettingsScreen() {
           <View style={styles.actionLeft}>
             <Text style={styles.actionIcon}>🔄</Text>
             <View>
-              <Text style={styles.actionLabel}>{t('sync_mono', language)}</Text>
+              <Text style={styles.actionLabel}>{t('sync_mono')}</Text>
               <Text style={styles.actionHint}>Manually pull last 30 days</Text>
             </View>
           </View>
@@ -322,7 +324,7 @@ export default function SettingsScreen() {
 
       {/* ── Logout ── */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>{t('logout', language)}</Text>
+        <Text style={styles.logoutText}>{t('logout')}</Text>
       </TouchableOpacity>
 
       <Text style={styles.version}>MoneyMate v1.0</Text>
@@ -333,7 +335,7 @@ export default function SettingsScreen() {
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { paddingBottom: 32 }]}>
           <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>Choose Accounts</Text>
+          <Text style={styles.modalTitle}>{t('choose_accounts')}</Text>
           <Text style={styles.pickerSubtitle}>Select which Monobank accounts to track. Others will be removed.</Text>
 
           {pickerAccounts.map((acc, i) => {
@@ -380,7 +382,7 @@ export default function SettingsScreen() {
                 }
               }}
             >
-              <Text style={styles.cancelBtnText}>Skip</Text>
+              <Text style={styles.cancelBtnText}>{t('skip')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.saveBtn, (confirming || selectedIds.size === 0) && { opacity: 0.65 }]}
@@ -389,7 +391,7 @@ export default function SettingsScreen() {
             >
               {confirming
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.saveBtnText}>Confirm ({selectedIds.size})</Text>}
+                : <Text style={styles.saveBtnText}>{t('confirm')} ({selectedIds.size})</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -401,9 +403,9 @@ export default function SettingsScreen() {
       <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.modalCard}>
           <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>Change Password</Text>
+          <Text style={styles.modalTitle}>{t('change_password')}</Text>
 
-          <Text style={styles.modalLabel}>Current Password</Text>
+          <Text style={styles.modalLabel}>{t('current_password')}</Text>
           <TextInput
             style={styles.modalInput}
             placeholder="Enter current password"
@@ -413,7 +415,7 @@ export default function SettingsScreen() {
             onChangeText={setCurrentPw}
           />
 
-          <Text style={styles.modalLabel}>New Password</Text>
+          <Text style={styles.modalLabel}>{t('new_password')}</Text>
           <TextInput
             style={styles.modalInput}
             placeholder="Min. 8 characters"
@@ -423,7 +425,7 @@ export default function SettingsScreen() {
             onChangeText={setNewPw}
           />
 
-          <Text style={styles.modalLabel}>Confirm New Password</Text>
+          <Text style={styles.modalLabel}>{t('confirm_new_password')}</Text>
           <TextInput
             style={styles.modalInput}
             placeholder="Repeat new password"
@@ -435,10 +437,10 @@ export default function SettingsScreen() {
 
           <View style={styles.modalBtns}>
             <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowChangePw(false); setCurrentPw(''); setNewPw(''); setConfirmPw(''); }}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.saveBtn, changePwLoading && { opacity: 0.65 }]} onPress={handleChangePassword} disabled={changePwLoading}>
-              {changePwLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Update</Text>}
+              {changePwLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t('update')}</Text>}
             </TouchableOpacity>
           </View>
         </View>

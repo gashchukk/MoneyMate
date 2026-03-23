@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
@@ -23,12 +24,7 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'all', label: 'All' },
 ];
 
-const RANGE_MODE_LABELS: Record<RangeMode, string> = {
-  weekly:   'Weekly',
-  monthly:  'Monthly',
-  annually: 'Annually',
-  custom:   'Custom',
-};
+// RANGE_MODE_LABELS replaced by t() calls per mode key
 
 const PALETTE = [
   '#8B1A1A','#e67e22','#27ae60','#2980b9','#9b59b6',
@@ -185,6 +181,7 @@ function DonutChart({ slices, size, accentColor, total, sym, selected, onPress }
 function CategoryPieChart({ slices, total, sym, accentColor }: {
   slices: Slice[]; total: number; sym: string; accentColor: string;
 }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<Slice | null>(null);
   const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
 
@@ -193,7 +190,7 @@ function CategoryPieChart({ slices, total, sym, accentColor }: {
   if (slices.length === 0 || total === 0) {
     return (
       <View style={pieStyles.empty}>
-        <Text style={pieStyles.emptyText}>No data for this period</Text>
+        <Text style={pieStyles.emptyText}>{t('no_data')}</Text>
       </View>
     );
   }
@@ -255,7 +252,7 @@ const statStyles = StyleSheet.create({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AnalyticsScreen() {
-  const { language } = useAppSettings();
+  const { t } = useTranslation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,7 +277,7 @@ export default function AnalyticsScreen() {
   }, [rangeMode]);
 
   const rangeLabel = useMemo(() => {
-    if (rangeMode === 'custom') return 'Custom';
+    if (rangeMode === 'custom') return t('custom');
     if (rangeMode === 'weekly') {
       const day = navDate.getDay();
       const mon = new Date(navDate);
@@ -462,7 +459,7 @@ export default function AnalyticsScreen() {
         )}
 
         <TouchableOpacity onPress={() => setShowModeMenu(true)} style={styles.modeButton}>
-          <Text style={styles.modeButtonText}>{RANGE_MODE_LABELS[rangeMode]} ▾</Text>
+          <Text style={styles.modeButtonText}>{t(rangeMode)} ▾</Text>
         </TouchableOpacity>
       </View>
 
@@ -477,7 +474,7 @@ export default function AnalyticsScreen() {
                 onPress={() => { setRangeMode(mode); setShowModeMenu(false); }}
               >
                 <Text style={[styles.modeMenuItemText, rangeMode === mode && styles.modeMenuItemTextActive]}>
-                  {RANGE_MODE_LABELS[mode]}
+                  {t(mode)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -492,7 +489,7 @@ export default function AnalyticsScreen() {
           onPress={() => { setMainTab('spendings'); setSelectedCategory(null); }}
         >
           <Text style={[styles.mainTabText, mainTab === 'spendings' && styles.mainTabTextActiveSpend]}>
-            ⬆️  Spendings
+            ⬆️  {t('spendings')}
           </Text>
           <Text style={[styles.mainTabAmount, { color: mainTab === 'spendings' ? '#c0392b' : '#aaa' }]}>
             {sym}{totalExpenses.toFixed(0)}
@@ -504,7 +501,7 @@ export default function AnalyticsScreen() {
           onPress={() => { setMainTab('income'); setSelectedCategory(null); }}
         >
           <Text style={[styles.mainTabText, mainTab === 'income' && styles.mainTabTextActiveIncome]}>
-            ⬇️  Income
+            ⬇️  {t('income')}
           </Text>
           <Text style={[styles.mainTabAmount, { color: mainTab === 'income' ? '#27ae60' : '#aaa' }]}>
             {sym}{totalIncome.toFixed(0)}
@@ -520,10 +517,10 @@ export default function AnalyticsScreen() {
           {/* Summary stats */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Summary</Text>
-            <StatRow label="Total Spent"       value={`${sym}${totalExpenses.toFixed(2)}`}  color="#c0392b" />
+            <StatRow label={t('total_spent')}       value={`${sym}${totalExpenses.toFixed(2)}`}  color="#c0392b" />
             <StatRow label="Transactions"      value={`${expenses.length}`} />
-            <StatRow label="Average Expense"   value={expenses.length > 0 ? `${sym}${(totalExpenses / expenses.length).toFixed(2)}` : '—'} />
-            <StatRow label="Largest Expense"   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
+            <StatRow label={t('average_expense')}   value={expenses.length > 0 ? `${sym}${(totalExpenses / expenses.length).toFixed(2)}` : '—'} />
+            <StatRow label={t('largest_expense')}   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>Top Category</Text>
               <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].label, 0) : '#aaa' }]}>
@@ -534,7 +531,7 @@ export default function AnalyticsScreen() {
 
           {/* Category pie */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>By Category</Text>
+            <Text style={styles.cardTitle}>{t('by_category')}</Text>
             <CategoryPieChart slices={categorySlices} total={totalExpenses} sym={sym} accentColor="#c0392b" />
           </View>
 
@@ -580,7 +577,7 @@ export default function AnalyticsScreen() {
 
           {/* Top expenses */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Top Expenses</Text>
+            <Text style={styles.cardTitle}>{t('top_expenses')}</Text>
             {expenses.length === 0 ? (
               <Text style={styles.emptyCard}>No expenses in this period</Text>
             ) : [...expenses].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 5).map((tx, i, arr) => (
@@ -597,13 +594,13 @@ export default function AnalyticsScreen() {
 
           {/* 6-month spending trend */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>6-Month Trend</Text>
+            <Text style={styles.cardTitle}>{t('trend_6_months')}</Text>
             <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.exp }))} color="#c0392b" sym={sym} />
           </View>
 
           {/* Spending habits by weekday */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Spending by Weekday</Text>
+            <Text style={styles.cardTitle}>{t('by_weekday')}</Text>
             {(() => {
               const byWeekday = Array(7).fill(0);
               const byWeekdayCount = Array(7).fill(0);
@@ -641,10 +638,10 @@ export default function AnalyticsScreen() {
           {/* Summary stats */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Summary</Text>
-            <StatRow label="Total Income"      value={`${sym}${totalIncome.toFixed(2)}`}  color="#27ae60" />
+            <StatRow label={t('total_income')}      value={`${sym}${totalIncome.toFixed(2)}`}  color="#27ae60" />
             <StatRow label="Transactions"      value={`${income.length}`} />
-            <StatRow label="Average Income"    value={income.length > 0 ? `${sym}${(totalIncome / income.length).toFixed(2)}` : '—'} />
-            <StatRow label="Largest Income"    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
+            <StatRow label={t('average_income')}    value={income.length > 0 ? `${sym}${(totalIncome / income.length).toFixed(2)}` : '—'} />
+            <StatRow label={t('largest_income')}    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>Top Source</Text>
               <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].label, 0) : '#aaa' }]}>
@@ -701,7 +698,7 @@ export default function AnalyticsScreen() {
 
           {/* Top income transactions */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Top Income</Text>
+            <Text style={styles.cardTitle}>{t('top_income')}</Text>
             {income.length === 0 ? (
               <Text style={styles.emptyCard}>No income in this period</Text>
             ) : [...income].sort((a, b) => b.amount - a.amount).slice(0, 5).map((tx, i, arr) => (
@@ -718,13 +715,13 @@ export default function AnalyticsScreen() {
 
           {/* 6-month income trend */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>6-Month Trend</Text>
+            <Text style={styles.cardTitle}>{t('trend_6_months')}</Text>
             <BarChart data={monthlyTrend.map(m => ({ label: m.label, value: m.inc }))} color="#27ae60" sym={sym} />
           </View>
 
           {/* Income by weekday */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Income by Weekday</Text>
+            <Text style={styles.cardTitle}>{t('by_weekday')}</Text>
             {(() => {
               const byWeekday = Array(7).fill(0);
               const byWeekdayCount = Array(7).fill(0);

@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t, Currency } from '@/components/AppContext';
+import { useAppSettings, Currency } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
 import CreateAccountModal from '@/components/CreateAccountModal';
 import { useFocusEffect } from 'expo-router';
 import type { Account } from '@/types';
@@ -45,7 +46,8 @@ function convertToSystem(amount: number, fromCode: number, sys: Currency, rates:
 }
 
 export default function AccountsScreen() {
-  const { currency, language } = useAppSettings();
+  const { currency } = useAppSettings();
+  const { t } = useTranslation();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rates, setRates] = useState<ExchangeRates>({ USD: 41.5, EUR: 44.8 });
   const [loading, setLoading] = useState(true);
@@ -102,15 +104,15 @@ export default function AccountsScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>{t('accounts', language)}</Text>
+          <Text style={styles.headerTitle}>{t('accounts')}</Text>
           <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
-            <Text style={styles.addBtnText}>+ Add</Text>
+            <Text style={styles.addBtnText}>{t('add')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Total Balance */}
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>{t('total_balance', language)}</Text>
+          <Text style={styles.totalLabel}>{t('total_balance')}</Text>
           <Text style={styles.totalAmount}>
             {SYSTEM_SYMBOL[currency]}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
@@ -118,18 +120,18 @@ export default function AccountsScreen() {
           {hasCreditAccounts && (
             <View style={styles.totalBreakdown}>
               <Text style={styles.totalBreakdownText}>
-                Credit  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                {t('credit')}  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
               </Text>
               <Text style={styles.totalBreakdownDivider}>·</Text>
               <Text style={styles.totalBreakdownText}>
-                Personal  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalPersonal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                {t('personal')}  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalPersonal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
               </Text>
             </View>
           )}
         </View>
 
         {/* Currency Rates */}
-        <Text style={styles.sectionTitle}>{t('currency_rates', language)}</Text>
+        <Text style={styles.sectionTitle}>{t('currency_rates')}</Text>
         <View style={styles.ratesRow}>
           <View style={styles.rateCard}>
             <Text style={styles.rateFlag}>🇺🇸</Text>
@@ -144,14 +146,14 @@ export default function AccountsScreen() {
         </View>
 
         {/* Accounts List */}
-        <Text style={styles.sectionTitle}>{t('accounts', language)}</Text>
+        <Text style={styles.sectionTitle}>{t('accounts')}</Text>
 
         {accounts.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🏦</Text>
-            <Text style={styles.emptyText}>No accounts yet</Text>
+            <Text style={styles.emptyText}>{t('no_accounts_yet')}</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setShowCreate(true)}>
-              <Text style={styles.emptyBtnText}>+ Create your first account</Text>
+              <Text style={styles.emptyBtnText}>{t('create_your_first_account')}</Text>
             </TouchableOpacity>
           </View>
         ) : accounts.map(acc => {
@@ -204,7 +206,7 @@ export default function AccountsScreen() {
                       )}
                       {approx !== null && (
                         <Text style={styles.accountApprox}>
-                          {t('approx', language)} {SYSTEM_SYMBOL[currency]}{approx.toFixed(2)}
+                          {t('approx')} {SYSTEM_SYMBOL[currency]}{approx.toFixed(2)}
                         </Text>
                       )}
                     </View>

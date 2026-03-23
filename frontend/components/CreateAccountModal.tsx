@@ -5,7 +5,8 @@ import {
   Platform, ScrollView,
 } from 'react-native';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
+import { useAppSettings } from '@/components/AppContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Props {
@@ -24,6 +25,7 @@ const CURRENCIES = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CreateAccountModal({ visible, onClose, onCreated }: Props) {
+  const { t } = useTranslation();
   const { language } = useAppSettings();
 
   const [name, setName] = useState('');
@@ -81,10 +83,10 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
           <View style={styles.handle} />
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.title}>New Account</Text>
+            <Text style={styles.title}>{t('new_account')}</Text>
 
             {/* ── Name ── */}
-            <Text style={styles.label}>Account Name</Text>
+            <Text style={styles.label}>{t('account_name')}</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. Main Card, Savings..."
@@ -94,7 +96,7 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
             />
 
             {/* ── Account Type ── */}
-            <Text style={styles.label}>Type</Text>
+            <Text style={styles.label}>{t('type')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
               {ACCOUNT_TYPES.map(tp => (
                 <TouchableOpacity
@@ -110,7 +112,7 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
             </ScrollView>
 
             {/* ── Currency ── */}
-            <Text style={styles.label}>Currency</Text>
+            <Text style={styles.label}>{t('currency')}</Text>
             <View style={styles.currencyRow}>
               {CURRENCIES.map(c => (
                 <TouchableOpacity
@@ -126,7 +128,7 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
             </View>
 
             {/* ── Initial Balance ── */}
-            <Text style={styles.label}>Initial Balance</Text>
+            <Text style={styles.label}>{t('initial_balance')}</Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"
@@ -139,7 +141,7 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
             {/* ── Buttons ── */}
             <View style={styles.btns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
-                <Text style={styles.cancelText}>{t('cancel', language)}</Text>
+                <Text style={styles.cancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.createBtn, saving && styles.createBtnDisabled]}
@@ -148,7 +150,7 @@ export default function CreateAccountModal({ visible, onClose, onCreated }: Prop
               >
                 {saving
                   ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.createText}>Create Account</Text>
+                  : <Text style={styles.createText}>{t('create_account')}</Text>
                 }
               </TouchableOpacity>
             </View>

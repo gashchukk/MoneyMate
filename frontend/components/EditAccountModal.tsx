@@ -5,7 +5,8 @@ import {
   Platform, ScrollView,
 } from 'react-native';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
+import { useAppSettings } from '@/components/AppContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Account {
@@ -34,6 +35,7 @@ const CURRENCIES = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function EditAccountModal({ visible, account, onClose, onSaved }: Props) {
+  const { t } = useTranslation();
   const { language } = useAppSettings();
 
   const [name, setName] = useState('');
@@ -106,10 +108,10 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
           <View style={styles.handle} />
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.title}>Edit Account</Text>
+            <Text style={styles.title}>{t('edit_account')}</Text>
 
             {/* ── Name ── */}
-            <Text style={styles.label}>Account Name</Text>
+            <Text style={styles.label}>{t('account_name')}</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. Main Card"
@@ -119,7 +121,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
             />
 
             {/* ── Type ── */}
-            <Text style={styles.label}>Type</Text>
+            <Text style={styles.label}>{t('type')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
               {ACCOUNT_TYPES.map(tp => (
                 <TouchableOpacity
@@ -135,7 +137,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
             </ScrollView>
 
             {/* ── Currency ── */}
-            <Text style={styles.label}>Currency</Text>
+            <Text style={styles.label}>{t('currency')}</Text>
             <View style={styles.currencyRow}>
               {CURRENCIES.map(c => (
                 <TouchableOpacity
@@ -151,7 +153,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
             </View>
 
             {/* ── Balance ── */}
-            <Text style={styles.label}>Balance</Text>
+            <Text style={styles.label}>{t('balance')}</Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"
@@ -164,7 +166,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
             {/* ── Buttons ── */}
             <View style={styles.btns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-                <Text style={styles.cancelText}>{t('cancel', language)}</Text>
+                <Text style={styles.cancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
@@ -173,7 +175,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
               >
                 {saving
                   ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.saveText}>Save Changes</Text>
+                  : <Text style={styles.saveText}>{t('save_changes')}</Text>
                 }
               </TouchableOpacity>
             </View>

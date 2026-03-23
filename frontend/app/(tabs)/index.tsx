@@ -7,7 +7,8 @@ import {
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiFetch } from '@/constants/api';
-import { useAppSettings, t } from '@/components/AppContext';
+import { useAppSettings } from '@/components/AppContext';
+import { useTranslation } from 'react-i18next';
 import type { Transaction, Account } from '@/types';
 import {
   BRAND,
@@ -62,6 +63,7 @@ const TX_MODES: { key: TxMode; label: string; icon: string; color: string }[] = 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TransactionsScreen() {
   const { language } = useAppSettings();
+  const { t } = useTranslation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -283,9 +285,9 @@ export default function TransactionsScreen() {
     <View style={styles.root}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('transactions', language)}</Text>
+        <Text style={styles.headerTitle}>{t('transactions')}</Text>
         <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
-          <Text style={styles.addBtnText}>+ Add</Text>
+          <Text style={styles.addBtnText}>{t('add')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -302,7 +304,7 @@ export default function TransactionsScreen() {
           <Text style={styles.transferBannerIcon}>↔️</Text>
           <View style={{ flex: 1 }}>
             <Text style={styles.transferBannerTitle}>{potentialTransfers.length} possible transfer{potentialTransfers.length > 1 ? 's' : ''} found</Text>
-            <Text style={styles.transferBannerSub}>Tap to review and merge duplicates</Text>
+            <Text style={styles.transferBannerSub}>{t('tap_to_review_transfers')}</Text>
           </View>
           <Text style={styles.transferBannerArrow}>›</Text>
         </TouchableOpacity>
@@ -312,9 +314,9 @@ export default function TransactionsScreen() {
       <Modal visible={showTransferReview} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTransferReview(false)}>
         <View style={styles.reviewRoot}>
           <View style={styles.reviewHeader}>
-            <Text style={styles.reviewTitle}>Review Transfers</Text>
+            <Text style={styles.reviewTitle}>{t('review_transfers')}</Text>
             <TouchableOpacity onPress={() => setShowTransferReview(false)}>
-              <Text style={styles.reviewClose}>Done</Text>
+              <Text style={styles.reviewClose}>{t('done')}</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.reviewSub}>These transactions may be the same transfer. Merging marks both as "Transfer" and removes them from analytics.</Text>
@@ -329,14 +331,14 @@ export default function TransactionsScreen() {
                 <View key={`${cashTx.id}-${monoTx.id}`} style={styles.reviewCard}>
                   <View style={styles.reviewRow}>
                     <View style={styles.reviewTxBox}>
-                      <Text style={styles.reviewTxLabel}>Cash withdrawal</Text>
+                      <Text style={styles.reviewTxLabel}>{t('cash_withdrawal')}</Text>
                       <Text style={styles.reviewTxAcc}>{cashAcc?.name ?? '—'}</Text>
                       <Text style={styles.reviewTxDate}>{fmtDate(cashTx)}</Text>
                       <Text style={[styles.reviewTxAmount, { color: '#c0392b' }]}>{sym}{Math.abs(cashTx.amount).toFixed(2)}</Text>
                     </View>
                     <Text style={styles.reviewArrow}>→</Text>
                     <View style={styles.reviewTxBox}>
-                      <Text style={styles.reviewTxLabel}>Mono deposit</Text>
+                      <Text style={styles.reviewTxLabel}>{t('mono_deposit')}</Text>
                       <Text style={styles.reviewTxAcc}>{monoAcc?.name ?? '—'}</Text>
                       <Text style={styles.reviewTxDate}>{fmtDate(monoTx)}</Text>
                       <Text style={[styles.reviewTxAmount, { color: '#27ae60' }]}>+{sym}{monoTx.amount.toFixed(2)}</Text>
@@ -344,10 +346,10 @@ export default function TransactionsScreen() {
                   </View>
                   <View style={styles.reviewBtns}>
                     <TouchableOpacity style={styles.reviewDismissBtn} onPress={() => dismissTransfer(cashTx, monoTx)}>
-                      <Text style={styles.reviewDismissText}>Not a transfer</Text>
+                      <Text style={styles.reviewDismissText}>{t('not_a_transfer')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.reviewConfirmBtn} onPress={() => confirmTransfer(cashTx, monoTx)}>
-                      <Text style={styles.reviewConfirmText}>↔ Merge as transfer</Text>
+                      <Text style={styles.reviewConfirmText}>{t('merge_as_transfer')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -356,7 +358,7 @@ export default function TransactionsScreen() {
             {potentialTransfers.length === 0 && (
               <View style={{ alignItems: 'center', marginTop: 40 }}>
                 <Text style={{ fontSize: 40, marginBottom: 12 }}>✅</Text>
-                <Text style={{ fontSize: 16, color: '#aaa' }}>All transfers reviewed</Text>
+                <Text style={{ fontSize: 16, color: '#aaa' }}>{t('all_transfers_reviewed')}</Text>
               </View>
             )}
           </ScrollView>
@@ -373,7 +375,7 @@ export default function TransactionsScreen() {
         {sortedDays.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyText}>{t('no_transactions', language)}</Text>
+            <Text style={styles.emptyText}>{t('no_transactions')}</Text>
           </View>
         ) : sortedDays.map(day => {
           const date = new Date(day);
@@ -509,7 +511,7 @@ export default function TransactionsScreen() {
               />
 
               {/* Account */}
-              <Text style={styles.modalLabel}>{txMode === 'transfer' ? 'From Account' : 'Account'}</Text>
+              <Text style={styles.modalLabel}>{txMode === 'transfer' ? t('from_account') : t('account')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                 {accounts.map(acc => (
                   <TouchableOpacity
@@ -531,7 +533,7 @@ export default function TransactionsScreen() {
                     <Text style={styles.transferArrowText}>↓</Text>
                     <View style={styles.transferLine} />
                   </View>
-                  <Text style={styles.modalLabel}>To Account</Text>
+                  <Text style={styles.modalLabel}>{t('to_account')}</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                     {accounts.filter(acc => String(acc.id) !== accountId).map(acc => (
                       <TouchableOpacity
@@ -605,7 +607,7 @@ export default function TransactionsScreen() {
               {/* Buttons */}
               <View style={styles.modalBtns}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowModal(false); resetForm(); }}>
-                  <Text style={styles.cancelBtnText}>{t('cancel', language)}</Text>
+                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.saveBtn, { backgroundColor: activeModeConfig.color }, saving && { opacity: 0.65 }]}
@@ -615,7 +617,7 @@ export default function TransactionsScreen() {
                   {saving
                     ? <ActivityIndicator color="#fff" />
                     : <Text style={styles.saveBtnText}>
-                        {txMode === 'deposit' ? 'Add Deposit' : txMode === 'withdrawal' ? 'Add Expense' : 'Transfer'}
+                        {txMode === 'deposit' ? t('add_deposit') : txMode === 'withdrawal' ? t('add_expense') : t('add_transfer')}
                       </Text>
                   }
                 </TouchableOpacity>
