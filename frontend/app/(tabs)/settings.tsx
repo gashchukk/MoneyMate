@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/constants/api';
 import { useAppSettings, Currency, Language } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import QRCode from 'react-native-qrcode-svg';
 
 const TYPE_ICON: Record<string, string> = {
   black: '🖤', white: '🤍', platinum: '🔘', iron: '⚙️',
@@ -28,6 +29,7 @@ export default function SettingsScreen() {
   const [waitingForMono, setWaitingForMono] = useState(false);
   const [monoStatus, setMonoStatus] = useState<{ linked: boolean; accounts: number } | null>(null);
   const waitingForMonoRef = useRef(false);
+  const [monoQrUrl, setMonoQrUrl] = useState<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const pendingRequestIdRef = useRef<string | null>(null);
 
@@ -76,7 +78,7 @@ export default function SettingsScreen() {
         if (requestId) {
           setSyncLoading(true);
           try {
-            await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' });
+            await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
             const accounts = await apiFetch('/accounts');
             const monoAccs = accounts.filter((a: any) => a.source === 'mono');
             pendingRequestIdRef.current = requestId;
@@ -100,16 +102,20 @@ export default function SettingsScreen() {
     setMonoLoading(true);
     try {
       await apiFetch('/mono/corp/register-webhook', { method: 'POST' }).catch(() => {});
-      const data = await apiFetch('/mono/auth/request', { method: 'POST' });
+      const data = await apiFetch('/mono/auth/request', { method: 'POST' }, { skipRedirect: true });
       const url = data.acceptUrl ?? data.url;
       if (url) {
         if (data.tokenRequestId) {
           await SecureStore.setItemAsync('mono_request_id', data.tokenRequestId);
         }
-        // Mark that we're waiting — AppState listener will auto-sync on return
         waitingForMonoRef.current = true;
         setWaitingForMono(true);
-        await Linking.openURL(url);
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) {
+          await Linking.openURL(url);
+        } else {
+          setMonoQrUrl(url);
+        }
       } else {
         Alert.alert('Monobank', 'Request sent. Check the Monobank app to approve.');
       }
@@ -129,8 +135,8 @@ export default function SettingsScreen() {
     }
     setSyncLoading(true);
     try {
-      await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' });
-      await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' });
+      await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
+      await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
       Alert.alert('✅ Synced', 'Accounts and transactions updated.');
     } catch (e: any) {
       Alert.alert('Sync failed', e.message);
@@ -150,7 +156,7 @@ export default function SettingsScreen() {
       await Promise.all(toDelete.map(a => apiFetch(`/accounts/${a.id}`, { method: 'DELETE' })));
 
       // Sync transactions only for kept accounts
-      await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' });
+      await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
 
       setShowAccountPicker(false);
       loadMonoStatus();
@@ -363,6 +369,28 @@ export default function SettingsScreen() {
       <Text style={styles.version}>MoneyMate v1.0</Text>
     </ScrollView>
 
+    {/* ── Monobank QR Modal ── */}
+    <Modal visible={!!monoQrUrl} animationType="fade" transparent onRequestClose={() => setMonoQrUrl(null)}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalCard, { alignItems: 'center', paddingBottom: 36 }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Scan with Monobank</Text>
+          <Text style={[styles.actionHint, { textAlign: 'center', marginBottom: 28, fontSize: 13 }]}>
+            Open the Monobank app on another device and scan this QR code to authorise access.
+          </Text>
+          {monoQrUrl && (
+            <QRCode value={monoQrUrl} size={220} />
+          )}
+          <TouchableOpacity
+            style={[styles.cancelBtn, { marginTop: 32, paddingHorizontal: 40 }]}
+            onPress={() => { setMonoQrUrl(null); setWaitingForMono(false); waitingForMonoRef.current = false; }}
+          >
+            <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
     {/* ── Account Picker Modal ── */}
     <Modal visible={showAccountPicker} animationType="slide" transparent onRequestClose={() => {}}>
       <View style={styles.modalOverlay}>
@@ -408,7 +436,7 @@ export default function SettingsScreen() {
                 const rid = pendingRequestIdRef.current;
                 if (rid) {
                   setSyncLoading(true);
-                  apiFetch(`/mono/sync-transactions?request_id=${rid}`, { method: 'POST' })
+                  apiFetch(`/mono/sync-transactions?request_id=${rid}`, { method: 'POST' }, { skipRedirect: true })
                     .then(() => { loadMonoStatus(); Alert.alert('✅ Synced', 'All accounts linked.'); })
                     .catch((e: any) => Alert.alert('Sync failed', e.message))
                     .finally(() => { setSyncLoading(false); pendingRequestIdRef.current = null; });

@@ -3,7 +3,8 @@ import { router } from 'expo-router';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
 
-async function refreshAccessToken(): Promise<string | null> {
+// Returns new token, null (token truly invalid), or 'network_error' (unreachable)
+async function refreshAccessToken(): Promise<string | null | 'network_error'> {
   const refreshToken = await SecureStore.getItemAsync('refresh_token');
   if (!refreshToken) return null;
 
@@ -13,13 +14,13 @@ async function refreshAccessToken(): Promise<string | null> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return null; // server explicitly rejected — token invalid
     const data = await res.json();
     await SecureStore.setItemAsync('access_token', data.access_token);
     await SecureStore.setItemAsync('refresh_token', data.refresh_token);
     return data.access_token;
   } catch {
-    return null;
+    return 'network_error'; // fetch threw — backend unreachable, don't clear session
   }
 }
 
@@ -29,7 +30,7 @@ async function clearSession() {
   router.replace('/auth');
 }
 
-export async function apiFetch(path: string, options: RequestInit = {}) {
+export async function apiFetch(path: string, options: RequestInit = {}, { skipRedirect = false } = {}) {
   const token = await SecureStore.getItemAsync('access_token');
 
   const makeRequest = (authToken: string | null) =>
@@ -46,11 +47,14 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
+    if (newToken === 'network_error') {
+      throw new Error('Network error. Please check your connection.');
+    }
     if (newToken) {
       res = await makeRequest(newToken);
     }
     if (res.status === 401) {
-      await clearSession();
+      if (!skipRedirect) await clearSession();
       throw new Error('Session expired. Please log in again.');
     }
   }
