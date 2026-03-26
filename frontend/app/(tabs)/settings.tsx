@@ -190,6 +190,32 @@ export default function SettingsScreen() {
     }
   };
 
+  // ── Delete account ────────────────────────────────────────────────────────
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      t('delete_account_data'),
+      t('delete_account_data_confirm'),
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiFetch('/users/me', { method: 'DELETE' });
+              await SecureStore.deleteItemAsync('access_token');
+              await SecureStore.deleteItemAsync('refresh_token');
+              await SecureStore.deleteItemAsync('mono_request_id');
+              router.replace('/auth');
+            } catch (e: any) {
+              Alert.alert(t('error'), e.message);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = () => {
     Alert.alert(t('logout'), 'Are you sure?', [
@@ -259,10 +285,17 @@ export default function SettingsScreen() {
       {/* ── Account ── */}
       <Text style={styles.sectionTitle}>Account</Text>
       <View style={styles.card}>
-        <TouchableOpacity style={styles.actionRow} onPress={() => setShowChangePw(true)}>
+        <TouchableOpacity style={[styles.actionRow, styles.optionBorder]} onPress={() => setShowChangePw(true)}>
           <View style={styles.actionLeft}>
             <Text style={styles.actionIcon}>🔑</Text>
             <Text style={styles.actionLabel}>{t('change_password')}</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionRow} onPress={handleDeleteAccount}>
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>🗑️</Text>
+            <Text style={[styles.actionLabel, { color: '#c0392b' }]}>{t('delete_account_data')}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>

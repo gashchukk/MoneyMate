@@ -171,5 +171,7 @@
   "monthly": "Monthly",
   "annually": "Annually",
   "custom": "Custom",
-  "version": "MoneyMate v1.0"
+  "version": "MoneyMate v1.0",
+  "delete_account_data": "Delete Account & Data",
+  "delete_account_data_confirm": "This will permanently delete your account and all associated data (accounts, transactions, receipts). This cannot be undone."
 }

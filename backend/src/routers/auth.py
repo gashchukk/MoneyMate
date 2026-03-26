@@ -97,6 +97,21 @@ def google_auth(request: Request, body: schemas.GoogleAuthRequest, db: Session =
     }
 
 
+@router.delete("/users/me")
+def delete_account(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user),
+):
+    """Permanently delete the authenticated user and all their data."""
+    db.query(models.ReceiptImage).filter_by(user_id=user_id).delete()
+    db.query(models.Transaction).filter_by(user_id=user_id).delete()
+    db.query(models.Account).filter_by(user_id=user_id).delete()
+    db.query(models.UserCategory).filter_by(user_id=user_id).delete()
+    db.query(models.User).filter_by(id=user_id).delete()
+    db.commit()
+    return {"status": "account deleted"}
+
+
 @router.post("/change-password")
 def change_password(
     body: schemas.ChangePasswordRequest,

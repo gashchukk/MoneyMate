@@ -171,5 +171,7 @@
   "monthly": "Місяць",
   "annually": "Рік",
   "custom": "Власний",
-  "version": "MoneyMate v1.0"
+  "version": "MoneyMate v1.0",
+  "delete_account_data": "Видалити акаунт і дані",
+  "delete_account_data_confirm": "Це назавжди видалить ваш акаунт і всі пов'язані дані (рахунки, транзакції, чеки). Цю дію неможливо скасувати."
 }
