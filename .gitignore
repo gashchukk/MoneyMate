@@ -17,7 +17,7 @@ mono_api_test/
 dist/
 web-build/
 expo-env.d.ts
-
+.claude
 # Native
 .kotlin/
 *.orig.*
