@@ -326,47 +326,28 @@ def mono_sync_transactions(
             continue
 
         mono_txs = resp.json()
-        mono_tx_ids = {tx["id"] for tx in mono_txs}
-
-        stale_txs = db.query(models.Transaction).filter(
-            models.Transaction.account_id == acc.id,
-            models.Transaction.time >= from_ts,
-            models.Transaction.time <= to_ts,
-            models.Transaction.external_tx_id.notin_(mono_tx_ids),
-        ).all()
-        for stale in stale_txs:
-            acc.balance = (acc.balance or 0) - stale.amount
-            db.query(models.ReceiptImage).filter_by(transaction_id=stale.id).update({"transaction_id": None})
-            db.delete(stale)
 
         for tx in mono_txs:
-            category = mcc_to_category(tx.get("mcc"))
             existing = db.query(models.Transaction).filter_by(
                 external_tx_id=tx["id"]
             ).first()
-
             if existing:
-                existing.amount = tx["amount"] / 100
-                existing.description = tx.get("description")
-                existing.mcc = tx.get("mcc")
-                existing.currency_code = tx.get("currencyCode")
-                # Don't override manually set Transfer category
-                if existing.category != "Transfer":
-                    existing.category = category
-            else:
-                db.add(models.Transaction(
-                    user_id=user_id,
-                    account_id=acc.id,
-                    external_tx_id=tx["id"],
-                    time=int(tx["time"]),
-                    description=tx.get("description"),
-                    mcc=tx.get("mcc"),
-                    amount=tx["amount"] / 100,
-                    currency_code=tx.get("currencyCode") or acc.currency_code,
-                    source="mono",
-                    category=category,
-                    created_at=int(time.time()),
-                ))
+                continue
+
+            category = mcc_to_category(tx.get("mcc"))
+            db.add(models.Transaction(
+                user_id=user_id,
+                account_id=acc.id,
+                external_tx_id=tx["id"],
+                time=int(tx["time"]),
+                description=tx.get("description"),
+                mcc=tx.get("mcc"),
+                amount=tx["amount"] / 100,
+                currency_code=tx.get("currencyCode") or acc.currency_code,
+                source="mono",
+                category=category,
+                created_at=int(time.time()),
+            ))
 
     db.commit()
     return {"status": "transactions_synced"}

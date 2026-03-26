@@ -201,28 +201,12 @@ function CategoryPieChart({ slices, total, sym, accentColor }: {
         slices={slices} size={170} accentColor={accentColor}
         total={total} sym={sym} selected={selected} onPress={handlePress}
       />
-      <View style={pieStyles.legend}>
-        {slices.slice(0, 6).map((s, i) => {
-          const isActive = selected?.label === s.label;
-          return (
-            <TouchableOpacity key={i} style={pieStyles.legendRow} onPress={() => handlePress(s)} activeOpacity={0.7}>
-              <View style={[pieStyles.legendDot, { backgroundColor: s.color, transform: [{ scale: isActive ? 1.4 : 1 }] }]} />
-              <Text style={[pieStyles.legendLabel, isActive && { fontWeight: '700', color: s.color }]} numberOfLines={1}>{s.label}</Text>
-              <Text style={[pieStyles.legendValue, { color: s.color }]}>{sym}{fmt(s.value)}</Text>
-              <Text style={pieStyles.legendPct}>{s.pct.toFixed(1)}%</Text>
-            </TouchableOpacity>
-          );
-        })}
-        {slices.length > 6 && (
-          <Text style={pieStyles.moreText}>+{slices.length - 6} more</Text>
-        )}
-      </View>
     </View>
   );
 }
 
 const pieStyles = StyleSheet.create({
-  chartRow:   { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  chartRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
   legend:     { flex: 1, gap: 9 },
   legendRow:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot:  { width: 9, height: 9, borderRadius: 5, flexShrink: 0 },

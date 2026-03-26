@@ -50,7 +50,7 @@ export default function SettingsScreen() {
       const requestId = await SecureStore.getItemAsync('mono_request_id');
       const accounts = await apiFetch('/accounts');
       const monoAccounts = accounts.filter((a: any) => a.source === 'mono');
-      setMonoStatus({ linked: !!requestId, accounts: monoAccounts.length });
+      setMonoStatus({ linked: monoAccounts.length > 0, accounts: monoAccounts.length });
     } catch {}
   };
 
@@ -119,6 +119,27 @@ export default function SettingsScreen() {
       } else {
         Alert.alert('Monobank', 'Request sent. Check the Monobank app to approve.');
       }
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setMonoLoading(false);
+    }
+  };
+
+  // ── Monobank: generate QR link ───────────────────────────────────────────
+  const handleMonoQr = async () => {
+    setMonoLoading(true);
+    try {
+      await apiFetch('/mono/corp/register-webhook', { method: 'POST' }, { skipRedirect: true }).catch(() => {});
+      const data = await apiFetch('/mono/auth/request', { method: 'POST' }, { skipRedirect: true });
+      const url = data.acceptUrl ?? data.url;
+      if (!url) throw new Error('No URL returned from Monobank');
+      if (data.tokenRequestId) {
+        await SecureStore.setItemAsync('mono_request_id', data.tokenRequestId);
+      }
+      waitingForMonoRef.current = true;
+      setWaitingForMono(true);
+      setMonoQrUrl(url);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -316,8 +337,8 @@ export default function SettingsScreen() {
             <Text style={styles.monoStatusDot}>{monoStatus.linked ? '🟢' : '🔴'}</Text>
             <Text style={[styles.monoStatusText, { color: monoStatus.linked ? '#27ae60' : '#e67e22' }]}>
               {monoStatus.linked
-                ? `Connected · ${monoStatus.accounts} account${monoStatus.accounts !== 1 ? 's' : ''} linked`
-                : 'Not connected — tap "Link Monobank" to set up'}
+                ? `Connected · ${monoStatus.accounts} account${monoStatus.accounts !== 1 ? 's' : ''} synced`
+                : 'Not connected — link your Monobank account below'}
             </Text>
           </View>
         )}
@@ -328,19 +349,34 @@ export default function SettingsScreen() {
           disabled={monoLoading || waitingForMono}
         >
           <View style={styles.actionLeft}>
-            <Text style={styles.actionIcon}>{monoStatus?.linked ? '✅' : '🟡'}</Text>
+            <Text style={styles.actionIcon}>📱</Text>
             <View>
               <Text style={styles.actionLabel}>
                 {monoStatus?.linked ? 'Relink Monobank' : t('link_monobank')}
               </Text>
               {waitingForMono
                 ? <Text style={styles.actionHint}>Waiting for approval in Monobank app…</Text>
-                : <Text style={styles.actionHint}>
-                    {monoStatus?.linked ? 'Tap to re-authorise access' : 'Opens Monobank to authorise access'}
-                  </Text>}
+                : <Text style={styles.actionHint}>Opens Monobank app to authorise access</Text>}
             </View>
           </View>
           {monoLoading || waitingForMono
+            ? <ActivityIndicator color={BRAND} />
+            : <Text style={styles.chevron}>›</Text>}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionRow, styles.optionBorder]}
+          onPress={handleMonoQr}
+          disabled={monoLoading || waitingForMono}
+        >
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>📷</Text>
+            <View>
+              <Text style={styles.actionLabel}>Generate Link QR Code</Text>
+              <Text style={styles.actionHint}>Use this if Monobank is not installed on this phone</Text>
+            </View>
+          </View>
+          {monoLoading
             ? <ActivityIndicator color={BRAND} />
             : <Text style={styles.chevron}>›</Text>}
         </TouchableOpacity>
@@ -376,17 +412,52 @@ export default function SettingsScreen() {
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>Scan with Monobank</Text>
           <Text style={[styles.actionHint, { textAlign: 'center', marginBottom: 28, fontSize: 13 }]}>
-            Open the Monobank app on another device and scan this QR code to authorise access.
+            Open the Monobank app on another device and scan this QR code to authorise access. Once approved, tap the button below.
           </Text>
           {monoQrUrl && (
             <QRCode value={monoQrUrl} size={220} />
           )}
-          <TouchableOpacity
-            style={[styles.cancelBtn, { marginTop: 32, paddingHorizontal: 40 }]}
-            onPress={() => { setMonoQrUrl(null); setWaitingForMono(false); waitingForMonoRef.current = false; }}
-          >
-            <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
-          </TouchableOpacity>
+          <View style={[styles.modalBtns, { marginTop: 28 }]}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => { setMonoQrUrl(null); setWaitingForMono(false); waitingForMonoRef.current = false; }}
+            >
+              <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, syncLoading && { opacity: 0.65 }]}
+              disabled={syncLoading}
+              onPress={async () => {
+                const requestId = await SecureStore.getItemAsync('mono_request_id');
+                if (!requestId) return;
+                setMonoQrUrl(null);
+                setSyncLoading(true);
+                try {
+                  await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
+                  const accounts = await apiFetch('/accounts');
+                  const monoAccs = accounts.filter((a: any) => a.source === 'mono');
+                  if (monoAccs.length === 0) {
+                    Alert.alert('Not approved yet', 'No accounts found. Please approve in the Monobank app first.');
+                    return;
+                  }
+                  pendingRequestIdRef.current = requestId;
+                  setPickerAccounts(monoAccs);
+                  setSelectedIds(new Set(monoAccs.map((a: any) => a.id)));
+                  setShowAccountPicker(true);
+                } catch (e: any) {
+                  Alert.alert('Sync failed', e.message);
+                } finally {
+                  setSyncLoading(false);
+                  setWaitingForMono(false);
+                  waitingForMonoRef.current = false;
+                }
+              }}
+            >
+              {syncLoading
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.saveBtnText}>I approved — Sync</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
