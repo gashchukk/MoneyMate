@@ -28,7 +28,7 @@ def auth_request(
     webhook_url = f"{_BACKEND_URL}/mono/webhook/{user_id}" if _BACKEND_URL else None
     resp = monobank.mono_request_access(webhook_url=webhook_url)
     if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text)
+        raise HTTPException(502, resp.text)
 
     data = resp.json()
     token_request_id = data.get("tokenRequestId")
@@ -173,7 +173,7 @@ def register_corp_webhook(
     webhook_url = f"{_BACKEND_URL}/mono/corp/webhook"
     resp = monobank.mono_set_corp_webhook(webhook_url)
     if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text)
+        raise HTTPException(502, resp.text)
     return {"status": "webhook_registered", "webhook_url": webhook_url}
 
 
@@ -264,7 +264,7 @@ def mono_sync_accounts(
 ):
     resp = monobank.mono_client_info(request_id)
     if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text)
+        raise HTTPException(502, resp.text)
 
     info = resp.json()
     for acc in info["accounts"]:
