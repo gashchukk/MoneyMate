@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
-  Alert, RefreshControl, TouchableOpacity, StatusBar,
+  Alert, RefreshControl, TouchableOpacity, StatusBar, Modal,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { apiFetch } from '@/constants/api';
@@ -73,6 +73,7 @@ export default function AccountDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -97,27 +98,18 @@ export default function AccountDetailScreen() {
   useEffect(() => { fetchData(); }, []);
 
   // ── Delete ──────────────────────────────────────────────────────────────────
-  const handleDelete = () => {
-    Alert.alert(
-      t('delete_account'),
-      `Are you sure you want to delete "${account?.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
-              router.back();
-            } catch (e: any) {
-              Alert.alert('Error', e.message);
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleDelete = () => setShowDeleteConfirm(true);
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+    setDeleting(true);
+    try {
+      await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+      setDeleting(false);
+    }
   };
 
   // ── Group transactions by day ───────────────────────────────────────────────
@@ -262,6 +254,27 @@ export default function AccountDetailScreen() {
           }}
         />
       )}
+
+      {/* ── Delete confirmation modal ── */}
+      <Modal visible={showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmIcon}>🗑</Text>
+            <Text style={styles.confirmTitle}>{t('delete_account')}</Text>
+            <Text style={styles.confirmBody}>
+              Are you sure you want to delete "{account?.name}"?{'\n'}This cannot be undone.
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setShowDeleteConfirm(false)}>
+                <Text style={styles.confirmCancelText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmDeleteBtn} onPress={confirmDelete}>
+                <Text style={styles.confirmDeleteText}>{t('delete')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -269,6 +282,32 @@ export default function AccountDetailScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center', padding: 32,
+  },
+  confirmCard: {
+    backgroundColor: '#fff', borderRadius: 24, padding: 28,
+    width: '100%', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15, shadowRadius: 24, elevation: 12,
+  },
+  confirmIcon: { fontSize: 36, marginBottom: 12 },
+  confirmTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 8 },
+  confirmBody: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 21, marginBottom: 24 },
+  confirmBtns: { flexDirection: 'row', gap: 10, width: '100%' },
+  confirmCancelBtn: {
+    flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center',
+    borderWidth: 1.5, borderColor: '#e0e0e0',
+  },
+  confirmCancelText: { fontSize: 15, fontWeight: '700', color: '#555' },
+  confirmDeleteBtn: {
+    flex: 1, borderRadius: 14, paddingVertical: 14, alignItems: 'center',
+    backgroundColor: '#c0392b',
+  },
+  confirmDeleteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
   root: { flex: 1, backgroundColor: '#FAFAFA' },
   content: { paddingBottom: 48 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },

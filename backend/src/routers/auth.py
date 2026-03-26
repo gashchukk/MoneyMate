@@ -1,6 +1,9 @@
+import os
 import time
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 import src.models as models
 import src.schemas as schemas
@@ -8,6 +11,8 @@ from src.database import get_db
 from src.auth import hash_password, verify_password
 from src.security import create_access_token, create_refresh_token, decode_refresh_token, get_current_user
 from src.rate_limit import limiter
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_WEB", "")
 
 router = APIRouter(tags=["auth"])
 
@@ -54,6 +59,40 @@ def refresh(body: schemas.RefreshRequest):
     return {
         "access_token": create_access_token(user_id),
         "refresh_token": create_refresh_token(user_id),
+        "token_type": "bearer",
+    }
+
+
+@router.post("/auth/google", response_model=schemas.TokenResponse)
+@limiter.limit("10/minute")
+def google_auth(request: Request, body: schemas.GoogleAuthRequest, db: Session = Depends(get_db)):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(500, "Google auth is not configured on this server")
+    try:
+        id_info = google_id_token.verify_oauth2_token(
+            body.id_token, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+    except ValueError as e:
+        raise HTTPException(401, f"Invalid Google token: {e}")
+
+    email = id_info.get("email")
+    if not email:
+        raise HTTPException(400, "No email returned from Google")
+
+    user = db.query(models.User).filter_by(email=email).first()
+    if not user:
+        user = models.User(
+            email=email,
+            password_hash="",
+            created_at=int(time.time()),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    return {
+        "access_token": create_access_token(user.id),
+        "refresh_token": create_refresh_token(user.id),
         "token_type": "bearer",
     }
 

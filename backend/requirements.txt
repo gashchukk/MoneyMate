@@ -6,6 +6,7 @@ sqlalchemy
 pydantic[email]
 PyJWT
 google-cloud-vision>=3.4.0
+google-auth
 bcrypt
 google-genai>=1.0.0
 python-dotenv

@@ -133,6 +133,12 @@ class CategoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ---------- GOOGLE AUTH ----------
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
 # ---------- CHANGE PASSWORD ----------
 
 class ChangePasswordRequest(BaseModel):

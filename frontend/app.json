@@ -8,9 +8,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bohdanhashchuk.moneymate"
     },
     "android": {
+      "package": "com.bohdanhashchuk.moneymate",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE"
       },
@@ -46,7 +48,14 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-web-browser",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.774898886624-o2qdt61i5om8f2b6lpdag734esoa7fgk"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
