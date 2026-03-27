@@ -1,9 +1,10 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "MoneyMate",
+    "slug": "MoneyMate",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/logo.png",
     "scheme": "moneymate",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,7 +15,8 @@
     "android": {
       "package": "com.bohdanhashchuk.moneymate",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE"
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -54,7 +56,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.774898886624-o2qdt61i5om8f2b6lpdag734esoa7fgk"
+          "iosUrlScheme": "com.googleusercontent.apps.1044437157993-3q2s17fmbf2th1vob36sb9krpjujb7cs"
         }
       ]
     ],

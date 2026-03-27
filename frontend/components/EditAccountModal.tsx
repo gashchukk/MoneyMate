@@ -4,7 +4,7 @@ import {
   Modal, ActivityIndicator, Alert, KeyboardAvoidingView,
   Platform, ScrollView,
 } from 'react-native';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 
@@ -92,6 +92,7 @@ export default function EditAccountModal({ visible, account, onClose, onSaved }:
 
       onSaved();
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setSaving(false);

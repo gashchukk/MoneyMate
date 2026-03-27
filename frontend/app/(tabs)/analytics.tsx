@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, router } from 'expo-router';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, CATEGORY_COLORS, currencySymbol } from '@/constants/brand';
@@ -284,6 +284,7 @@ export default function AnalyticsScreen() {
       setTransactions(txs);
       setAccounts(accs);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);

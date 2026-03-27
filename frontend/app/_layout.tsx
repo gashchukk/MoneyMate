@@ -3,7 +3,10 @@ import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { LogBox } from 'react-native';
 import 'react-native-reanimated';
+
+LogBox.ignoreLogs(['Sending `onAnimatedValueUpdate` with no listeners registered.']);
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppProvider } from '@/components/AppContext';

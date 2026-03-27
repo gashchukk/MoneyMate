@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import { useTranslation } from 'react-i18next';
 import type { Transaction, Account } from '@/types';
@@ -157,6 +157,7 @@ export default function TransactionsScreen() {
       setPotentialTransfers(prev => prev.filter(p => p.cashTx.id !== cashTx.id));
       fetchAll();
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     }
   };
@@ -180,6 +181,7 @@ export default function TransactionsScreen() {
       setCustomCategories(cats);
       detectPotentialTransfers(txs);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
@@ -205,6 +207,7 @@ export default function TransactionsScreen() {
       setCustomCategories(prev => [...prev, saved]);
       setCategory(name);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     }
     setNewCategoryName('');
@@ -251,6 +254,7 @@ export default function TransactionsScreen() {
       resetForm();
       fetchAll();
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setSaving(false);

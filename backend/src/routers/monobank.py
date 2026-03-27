@@ -104,13 +104,13 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
             existing.balance = balance
             existing.credit_limit = credit_limit
             existing.currency_code = acc.get("currencyCode")
-            existing.name = acc_type + "card"
+            existing.name = acc_type.capitalize() + " card"
             existing.type = acc_type
             synced_accounts.append(existing)
         else:
             new_acc = models.Account(
                 user_id=user_id,
-                name=acc_type + "card",
+                name=acc_type.capitalize() + " card",
                 type=acc_type,
                 source="mono",
                 external_account_id=acc.get("id"),

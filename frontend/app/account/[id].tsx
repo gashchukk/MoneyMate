@@ -4,7 +4,7 @@ import {
   Alert, RefreshControl, TouchableOpacity, StatusBar, Modal,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import EditAccountModal from '@/components/EditAccountModal';
@@ -88,6 +88,7 @@ export default function AccountDetailScreen() {
       setAccount(acc);
       setTransactions(txs.filter((tx: Transaction) => String(tx.account_id) === String(id)));
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
@@ -107,6 +108,7 @@ export default function AccountDetailScreen() {
       await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
       router.back();
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
       setDeleting(false);
     }

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
@@ -83,6 +83,7 @@ export default function TransactionDetailScreen() {
       const acc = accs.find((a: Account) => a.id === found.account_id);
       setAccount(acc ?? null);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
@@ -106,6 +107,7 @@ export default function TransactionDetailScreen() {
               await apiFetch(`/transactions/${id}`, { method: 'DELETE' });
               router.back();
             } catch (e: any) {
+              if (e instanceof SessionExpiredError) return;
               Alert.alert('Error', e.message);
               setDeleting(false);
             }
@@ -142,6 +144,7 @@ export default function TransactionDetailScreen() {
       setTx(updated);
       setShowEdit(false);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setSaving(false);

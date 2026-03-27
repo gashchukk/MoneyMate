@@ -35,7 +35,7 @@ def sync_all_users():
                         acc_type = acc.get("type") or "unknown"
                         existing.balance = balance
                         existing.currency_code = acc.get("currencyCode")
-                        existing.name = acc_type + "card"
+                        existing.name = acc_type.capitalize() + " card"
                         existing.type = acc_type
                         print(f"Updated account {existing.id}")
             else:

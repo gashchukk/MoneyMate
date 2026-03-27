@@ -7,7 +7,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings, Currency, Language } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
 import QRCode from 'react-native-qrcode-svg';
@@ -133,6 +133,7 @@ export default function SettingsScreen() {
         Alert.alert('Monobank', 'Request sent. Check the Monobank app to approve.');
       }
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setMonoLoading(false);
@@ -167,6 +168,7 @@ export default function SettingsScreen() {
       setWaitingForMono(true);
       setMonoQrUrl(url);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setMonoLoading(false);
@@ -208,6 +210,7 @@ export default function SettingsScreen() {
       loadMonoStatus();
       Alert.alert('✅ Linked & Synced', `${selectedIds.size} account${selectedIds.size !== 1 ? 's' : ''} linked and transactions imported.`);
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setConfirming(false);
@@ -236,6 +239,7 @@ export default function SettingsScreen() {
       setShowChangePw(false);
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
     } catch (e: any) {
+      if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
     } finally {
       setChangePwLoading(false);

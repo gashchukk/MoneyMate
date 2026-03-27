@@ -7,7 +7,7 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, router } from 'expo-router';
-import { apiFetch } from '@/constants/api';
+import { apiFetch, SessionExpiredError } from '@/constants/api';
 import * as SecureStore from 'expo-secure-store';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
@@ -395,6 +395,7 @@ export default function ScanScreen() {
         setDuplicateTx(null);
         pushToTransactions(dup.time);
       } catch (e: any) {
+        if (e instanceof SessionExpiredError) return;
         Alert.alert('Error', e.message);
       }
     };

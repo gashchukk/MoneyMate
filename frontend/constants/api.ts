@@ -3,6 +3,13 @@ import { router } from 'expo-router';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
 
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired. Please log in again.');
+    this.name = 'SessionExpiredError';
+  }
+}
+
 // Returns new token, null (token truly invalid), or 'network_error' (unreachable)
 async function refreshAccessToken(): Promise<string | null | 'network_error'> {
   const refreshToken = await SecureStore.getItemAsync('refresh_token');
@@ -55,7 +62,7 @@ export async function apiFetch(path: string, options: RequestInit = {}, { skipRe
     }
     if (res.status === 401) {
       if (!skipRedirect) await clearSession();
-      throw new Error('Session expired. Please log in again.');
+      throw new SessionExpiredError();
     }
   }
 
