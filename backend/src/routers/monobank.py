@@ -206,13 +206,14 @@ async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(
         log.warning("mono_corp_webhook: missing account or statementItem in payload")
         return {"status": "ignored"}
 
-    # Find the account in our DB by Monobank account ID
-    account = db.query(models.Account).filter_by(
+    # Find all accounts in our DB by Monobank account ID (multiple users may share the same card)
+    accounts = db.query(models.Account).filter_by(
         external_account_id=external_account_id
-    ).first()
-    if not account:
+    ).all()
+    if not accounts:
         log.error("mono_corp_webhook: account not found for external_account_id=%s — accounts may not be synced yet", external_account_id)
         return {"status": "account not found"}
+    account = accounts[0]  # used for balance update below
 
     tx_id = item.get("id")
     if not tx_id:
@@ -222,35 +223,38 @@ async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(
     category = mcc_to_category(item.get("mcc"))
     amount = item.get("amount", 0) / 100
 
-    existing = db.query(models.Transaction).filter_by(external_tx_id=tx_id).first()
-    if existing:
-        existing.amount = amount
-        existing.description = item.get("description")
-        existing.mcc = item.get("mcc")
-        existing.currency_code = item.get("currencyCode")
-        if existing.category != "Transfer":
-            existing.category = category
-        log.info("mono_corp_webhook: updated existing tx %s", tx_id)
-    else:
-        db.add(models.Transaction(
-            user_id=account.user_id,
-            account_id=account.id,
-            external_tx_id=tx_id,
-            time=int(item["time"]),
-            description=item.get("description"),
-            mcc=item.get("mcc"),
-            amount=amount,
-            currency_code=item.get("currencyCode") or account.currency_code,
-            source="mono",
-            category=category,
-            created_at=int(time.time()),
-        ))
-        log.info("mono_corp_webhook: created new tx %s amount=%s for user %s", tx_id, amount, account.user_id)
+    for acc in accounts:
+        existing = db.query(models.Transaction).filter_by(
+            external_tx_id=tx_id, account_id=acc.id
+        ).first()
+        if existing:
+            existing.amount = amount
+            existing.description = item.get("description")
+            existing.mcc = item.get("mcc")
+            existing.currency_code = item.get("currencyCode")
+            if existing.category != "Transfer":
+                existing.category = category
+            log.info("mono_corp_webhook: updated existing tx %s for user %s", tx_id, acc.user_id)
+        else:
+            db.add(models.Transaction(
+                user_id=acc.user_id,
+                account_id=acc.id,
+                external_tx_id=tx_id,
+                time=int(item["time"]),
+                description=item.get("description"),
+                mcc=item.get("mcc"),
+                amount=amount,
+                currency_code=item.get("currencyCode") or acc.currency_code,
+                source="mono",
+                category=category,
+                created_at=int(time.time()),
+            ))
+            log.info("mono_corp_webhook: created new tx %s amount=%s for user %s", tx_id, amount, acc.user_id)
 
-    # Keep account balance in sync from webhook payload
-    raw_balance = item.get("balance")
-    if raw_balance is not None:
-        account.balance = raw_balance / 100
+        # Keep account balance in sync from webhook payload
+        raw_balance = item.get("balance")
+        if raw_balance is not None:
+            acc.balance = raw_balance / 100
 
     db.commit()
     return {"status": "ok"}
@@ -329,7 +333,7 @@ def mono_sync_transactions(
 
         for tx in mono_txs:
             existing = db.query(models.Transaction).filter_by(
-                external_tx_id=tx["id"]
+                external_tx_id=tx["id"], account_id=acc.id
             ).first()
             if existing:
                 continue
