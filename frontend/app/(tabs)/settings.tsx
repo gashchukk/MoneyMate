@@ -99,6 +99,19 @@ export default function SettingsScreen() {
 
   // ── Monobank: request access ──────────────────────────────────────────────
   const handleMonoLink = async () => {
+    if (monoStatus?.linked) {
+      const confirmed = await new Promise<boolean>(resolve =>
+        Alert.alert(
+          'Already linked',
+          `You already have ${monoStatus.accounts} Monobank account${monoStatus.accounts !== 1 ? 's' : ''} connected. Relinking will replace them.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Relink', style: 'destructive', onPress: () => resolve(true) },
+          ],
+        )
+      );
+      if (!confirmed) return;
+    }
     setMonoLoading(true);
     try {
       await apiFetch('/mono/corp/register-webhook', { method: 'POST' }).catch(() => {});
@@ -128,6 +141,19 @@ export default function SettingsScreen() {
 
   // ── Monobank: generate QR link ───────────────────────────────────────────
   const handleMonoQr = async () => {
+    if (monoStatus?.linked) {
+      const confirmed = await new Promise<boolean>(resolve =>
+        Alert.alert(
+          'Already linked',
+          `You already have ${monoStatus.accounts} Monobank account${monoStatus.accounts !== 1 ? 's' : ''} connected. Relinking will replace them.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Relink', style: 'destructive', onPress: () => resolve(true) },
+          ],
+        )
+      );
+      if (!confirmed) return;
+    }
     setMonoLoading(true);
     try {
       await apiFetch('/mono/corp/register-webhook', { method: 'POST' }, { skipRedirect: true }).catch(() => {});
@@ -156,9 +182,8 @@ export default function SettingsScreen() {
     }
     setSyncLoading(true);
     try {
-      await apiFetch(`/mono/sync-accounts?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
       await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
-      Alert.alert('✅ Synced', 'Accounts and transactions updated.');
+      Alert.alert('✅ Synced', 'New transactions imported.');
     } catch (e: any) {
       Alert.alert('Sync failed', e.message);
     } finally {
