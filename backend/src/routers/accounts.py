@@ -78,6 +78,7 @@ def delete_account(
     if not account:
         raise HTTPException(404, "Account not found")
 
+    db.query(models.Transaction).filter_by(account_id=account_id).delete()
     db.delete(account)
     db.commit()
     return {"status": "deleted"}
