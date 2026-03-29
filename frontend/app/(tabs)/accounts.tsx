@@ -821,13 +821,13 @@ const styles = StyleSheet.create({
   selectedChipScroll: { marginBottom: 12 },
   selectedChipContent: { gap: 8 },
   selectedChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: BRAND + '15', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: BRAND + '15', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3,
     borderWidth: 1, borderColor: BRAND + '30',
   },
-  selectedChipFlag: { fontSize: 14 },
-  selectedChipText: { fontSize: 13, fontWeight: '700', color: BRAND },
-  selectedChipRemove: { fontSize: 10, color: BRAND, marginLeft: 2, fontWeight: '700' },
+  selectedChipFlag: { fontSize: 12 },
+  selectedChipText: { fontSize: 12, fontWeight: '700', color: BRAND },
+  selectedChipRemove: { fontSize: 9, color: BRAND, marginLeft: 1, fontWeight: '700' },
   pickerList: { flex: 1 },
   pickerRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 13, gap: 12,
