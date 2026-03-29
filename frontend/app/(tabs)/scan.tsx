@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, ScrollView, Image, Dimensions,
-  Platform, StatusBar,
+  Platform, StatusBar, TextInput, Modal,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -43,6 +43,13 @@ export default function ScanScreen() {
   const [duplicateTx, setDuplicateTx] = useState<any | null>(null);
   const [newTxTime, setNewTxTime] = useState<number | null>(null);
 
+  // Edit state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editAccountId, setEditAccountId] = useState<number | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
   const stageRef = useRef<Stage>('camera');
   stageRef.current = stage;
 
@@ -68,7 +75,7 @@ export default function ScanScreen() {
       <View style={styles.permissionScreen}>
         <Text style={styles.permissionIcon}>📷</Text>
         <Text style={styles.permissionTitle}>{t('camera_access_needed')}</Text>
-        <Text style={styles.permissionSub}>To scan receipts, MoneyMate needs camera access.</Text>
+        <Text style={styles.permissionSub}>{t('camera_permission_sub')}</Text>
         <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
           <Text style={styles.permissionBtnText}>{t('grant_access')}</Text>
         </TouchableOpacity>
@@ -86,7 +93,7 @@ export default function ScanScreen() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
       if (photo?.uri) { setImageUri(photo.uri); setStage('preview'); }
     } catch {
-      Alert.alert('Error', 'Failed to take photo.');
+      Alert.alert(t('error'), t('error_take_photo'));
     }
   };
 
@@ -106,7 +113,7 @@ export default function ScanScreen() {
   // ── Confirm image → pick account ───────────────────────────────────────────
   const handleConfirmImage = () => {
     if (accounts.length === 0) {
-      Alert.alert('No accounts', 'Please create an account first.');
+      Alert.alert(t('no_accounts_create_first'), t('please_create_account_first'));
       return;
     }
     // Auto-select first account
@@ -185,7 +192,7 @@ export default function ScanScreen() {
       setResult(data);
       setStage('result');
     } catch (e: any) {
-      Alert.alert('Scan failed', e.message);
+      Alert.alert(t('scan_failed'), e.message);
       setStage('account');
     } finally {
       setProcessing(false);
@@ -213,7 +220,7 @@ export default function ScanScreen() {
             <TouchableOpacity style={styles.camIconBtn} onPress={() => router.back()}>
               <Text style={styles.camIconText}>✕</Text>
             </TouchableOpacity>
-            <Text style={styles.camTitle}>Scan Receipt</Text>
+            <Text style={styles.camTitle}>{t('scan_receipt')}</Text>
             <TouchableOpacity style={styles.camIconBtn} onPress={() => setFlash(f => !f)}>
               <Text style={styles.camIconText}>{flash ? '⚡' : '🔦'}</Text>
             </TouchableOpacity>
@@ -269,7 +276,7 @@ export default function ScanScreen() {
         {/* Dark gradient overlay at bottom */}
         <View style={styles.previewOverlay}>
           <Text style={styles.previewTitle}>{t('looking_good')}</Text>
-          <Text style={styles.previewSub}>Make sure the receipt text is clear and in focus.</Text>
+          <Text style={styles.previewSub}>{t('make_sure_clear')}</Text>
 
           <View style={styles.previewBtns}>
             <TouchableOpacity style={styles.retakeBtn} onPress={() => setStage('camera')}>
@@ -300,7 +307,7 @@ export default function ScanScreen() {
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>{t('choose_accounts')}</Text>
-          <Text style={styles.sheetSub}>The expense will be deducted from this account.</Text>
+          <Text style={styles.sheetSub}>{t('choose_account_sub')}</Text>
 
           <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
             {accounts.map(acc => (
@@ -326,7 +333,7 @@ export default function ScanScreen() {
             onPress={handleScan}
             disabled={!selectedAccount}
           >
-            <Text style={styles.scanBtnText}>🔍  Scan Receipt</Text>
+            <Text style={styles.scanBtnText}>🔍  {t('scan_receipt')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.backLink} onPress={() => setStage('preview')}>
@@ -349,7 +356,7 @@ export default function ScanScreen() {
         <View style={styles.processingCard}>
           <ActivityIndicator size="large" color={BRAND} style={{ marginBottom: 20 }} />
           <Text style={styles.processingTitle}>{t('reading_receipt')}</Text>
-          <Text style={styles.processingSub}>Extracting items, prices and totals</Text>
+          <Text style={styles.processingSub}>{t('extracting_items')}</Text>
           <View style={styles.processingSteps}>
             {[t('uploading_image'), t('running_ocr'), t('parsing_data'), t('creating_transaction')].map((step, i) => (
               <View key={i} style={styles.processingStep}>
@@ -396,7 +403,58 @@ export default function ScanScreen() {
         pushToTransactions(dup.time);
       } catch (e: any) {
         if (e instanceof SessionExpiredError) return;
-        Alert.alert('Error', e.message);
+        Alert.alert(t('error'), e.message);
+      }
+    };
+
+    const openEdit = () => {
+      setEditAmount(parsed?.total != null ? String(parsed.total) : '');
+      setEditDate(parsed?.date ?? '');
+      setEditAccountId(selectedAccount);
+      setShowEditModal(true);
+    };
+
+    const handleSaveEdit = async () => {
+      if (!result.transaction_id) return;
+      setEditSaving(true);
+      try {
+        const amountNum = parseFloat(editAmount);
+        if (isNaN(amountNum)) { Alert.alert(t('error'), t('invalid_amount')); return; }
+
+        // Parse date string to unix timestamp (noon UTC to avoid timezone day shifts)
+        let timeVal: number | undefined;
+        if (editDate) {
+          const iso = editDate.match(/^\d{4}-\d{2}-\d{2}/)
+            ? editDate.slice(0, 10)
+            : (() => {
+                const dmy = editDate.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+                return dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : null;
+              })();
+          if (iso) timeVal = Math.floor(new Date(`${iso}T12:00:00Z`).getTime() / 1000);
+        }
+
+        await apiFetch(`/transactions/${result.transaction_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            amount: -Math.abs(amountNum),
+            ...(timeVal ? { time: timeVal } : {}),
+            ...(editAccountId ? { account_id: editAccountId } : {}),
+          }),
+        });
+
+        // Update local parsed_data display
+        if (result.parsed_data) {
+          result.parsed_data.total = Math.abs(amountNum);
+          if (editDate) result.parsed_data.date = editDate;
+        }
+        setSelectedAccount(editAccountId);
+        if (timeVal) setNewTxTime(timeVal);
+        setShowEditModal(false);
+      } catch (e: any) {
+        if (e instanceof SessionExpiredError) return;
+        Alert.alert(t('save_failed'), e.message);
+      } finally {
+        setEditSaving(false);
       }
     };
 
@@ -409,8 +467,8 @@ export default function ScanScreen() {
           <Text style={styles.successIcon}>✅</Text>
           <Text style={styles.successTitle}>{t('receipt_scanned')}</Text>
           {result.transaction_id
-            ? <Text style={styles.successSub}>Transaction #{result.transaction_id} created</Text>
-            : <Text style={styles.successSubWarn}>No total found — no transaction created</Text>
+            ? <Text style={styles.successSub}>{t('transaction_created', { id: result.transaction_id })}</Text>
+            : <Text style={styles.successSubWarn}>{t('no_total_found')}</Text>
           }
         </View>
 
@@ -441,7 +499,7 @@ export default function ScanScreen() {
                   </Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.dupTxDesc} numberOfLines={1}>
-                      {duplicateTx.description || 'Transaction'}
+                      {duplicateTx.description || t('transaction_detail')}
                     </Text>
                     <Text style={styles.dupTxMeta}>
                       {new Date(duplicateTx.time < 1e10 ? duplicateTx.time * 1000 : duplicateTx.time)
@@ -477,7 +535,14 @@ export default function ScanScreen() {
         <View style={styles.resultCard}>
           <View style={styles.resultCardHeader}>
             <Text style={styles.resultStoreName}>{parsed?.store ?? t('unknown_store')}</Text>
-            {parsed?.date && <Text style={styles.resultDate}>{parsed.date}</Text>}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {parsed?.date && <Text style={styles.resultDate}>{parsed.date}</Text>}
+              {result.transaction_id && (
+                <TouchableOpacity style={styles.editBtn} onPress={openEdit}>
+                  <Text style={styles.editBtnText}>{t('edit')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* Total */}
@@ -490,7 +555,7 @@ export default function ScanScreen() {
 
           {/* Account */}
           <View style={styles.resultMetaRow}>
-            <Text style={styles.resultMetaLabel}>Account</Text>
+            <Text style={styles.resultMetaLabel}>{t('account')}</Text>
             <Text style={styles.resultMetaValue}>{acc?.name ?? '—'}</Text>
           </View>
         </View>
@@ -498,7 +563,7 @@ export default function ScanScreen() {
         {/* Line items */}
         {items.length > 0 && (
           <View style={styles.resultCard}>
-            <Text style={styles.resultItemsTitle}>Items ({items.length})</Text>
+            <Text style={styles.resultItemsTitle}>{t('items_count', { count: items.length })}</Text>
             {items.map((item, i) => (
               <View key={i} style={[styles.itemRow, i < items.length - 1 && styles.itemBorder]}>
                 <View style={styles.itemLeft}>
@@ -513,7 +578,7 @@ export default function ScanScreen() {
 
             {/* Divider + total */}
             <View style={styles.itemsTotalRow}>
-              <Text style={styles.itemsTotalLabel}>Total</Text>
+              <Text style={styles.itemsTotalLabel}>{t('total')}</Text>
               <Text style={styles.itemsTotalValue}>{sym}{parsed?.total?.toFixed(2)}</Text>
             </View>
           </View>
@@ -521,6 +586,68 @@ export default function ScanScreen() {
 
         {/* Raw OCR toggle */}
         {result.raw_text && <RawTextToggle raw={result.raw_text} />}
+
+        {/* Edit Modal */}
+        <Modal visible={showEditModal} transparent animationType="slide" onRequestClose={() => setShowEditModal(false)}>
+          <View style={styles.editOverlay}>
+            <TouchableOpacity style={styles.editBackdrop} onPress={() => setShowEditModal(false)} />
+            <View style={styles.editSheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.editSheetTitle}>{t('edit_receipt_details')}</Text>
+
+              <Text style={styles.editLabel}>{t('amount')}</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editAmount}
+                onChangeText={setEditAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor="#ccc"
+              />
+
+              <Text style={styles.editLabel}>{t('date_format_hint')}</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editDate}
+                onChangeText={setEditDate}
+                placeholder={t('date')}
+                placeholderTextColor="#ccc"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.editLabel}>{t('account')}</Text>
+              <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
+                {accounts.map(acc => (
+                  <TouchableOpacity
+                    key={acc.id}
+                    style={[styles.accRow, editAccountId === acc.id && styles.accRowActive]}
+                    onPress={() => setEditAccountId(acc.id)}
+                  >
+                    <View style={[styles.accRadio, editAccountId === acc.id && styles.accRadioActive]}>
+                      {editAccountId === acc.id && <View style={styles.accRadioDot} />}
+                    </View>
+                    <Text style={styles.accRowName}>{acc.name}</Text>
+                    {editAccountId === acc.id && <Text style={styles.accCheck}>✓</Text>}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.editSaveBtn, editSaving && { opacity: 0.6 }]}
+                onPress={handleSaveEdit}
+                disabled={editSaving}
+              >
+                {editSaving
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.editSaveBtnText}>{t('save_changes')}</Text>
+                }
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.editCancelBtn} onPress={() => setShowEditModal(false)}>
+                <Text style={styles.editCancelBtnText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Actions */}
         <View style={styles.resultActions}>
@@ -546,10 +673,11 @@ export default function ScanScreen() {
 // ── Raw OCR text expandable ────────────────────────────────────────────────
 function RawTextToggle({ raw }: { raw: string }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   return (
     <View style={styles.rawCard}>
       <TouchableOpacity style={styles.rawToggle} onPress={() => setOpen(o => !o)}>
-        <Text style={styles.rawToggleText}>🔤 Raw OCR Text</Text>
+        <Text style={styles.rawToggleText}>{t('raw_ocr_text')}</Text>
         <Text style={styles.rawChevron}>{open ? '▲' : '▼'}</Text>
       </TouchableOpacity>
       {open && <Text style={styles.rawText} selectable>{raw}</Text>}
@@ -759,6 +887,33 @@ const styles = StyleSheet.create({
   dupKeepText: { fontSize: 14, fontWeight: '700', color: '#555' },
   dupRemoveBtn: { flex: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#c0392b' },
   dupRemoveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  editBtn: {
+    backgroundColor: '#f0f0f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  editBtnText: { fontSize: 12, fontWeight: '700', color: '#555' },
+
+  editOverlay: { flex: 1, justifyContent: 'flex-end' },
+  editBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  editSheet: {
+    backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 24, paddingBottom: Platform.OS === 'ios' ? 48 : 32,
+  },
+  editSheetTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 20 },
+  editLabel: { fontSize: 12, fontWeight: '700', color: '#aaa', marginBottom: 6, marginTop: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
+  editInput: {
+    backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14,
+    fontSize: 16, fontWeight: '600', color: '#1a1a1a',
+    borderWidth: 1, borderColor: '#ececec',
+  },
+  editSaveBtn: {
+    backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16,
+    alignItems: 'center', marginTop: 20,
+    shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 4,
+  },
+  editSaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  editCancelBtn: { alignItems: 'center', marginTop: 12, paddingVertical: 8 },
+  editCancelBtnText: { color: '#bbb', fontSize: 14, fontWeight: '600' },
 
   resultActions: { flexDirection: 'row', gap: 12, marginHorizontal: 16, marginTop: 20 },
   resultDoneBtn: { flex: 1, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 15, alignItems: 'center', borderWidth: 1.5, borderColor: '#e0e0e0' },

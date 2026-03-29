@@ -1,5 +1,9 @@
 import os
 import time
+import random
+import smtplib
+import logging
+from email.mime.text import MIMEText
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from google.oauth2 import id_token as google_id_token
@@ -12,9 +16,54 @@ from src.auth import hash_password, verify_password
 from src.security import create_access_token, create_refresh_token, decode_refresh_token, get_current_user
 from src.rate_limit import limiter
 
+logger = logging.getLogger(__name__)
+
+SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER     = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)
+RESET_CODE_TTL = 15 * 60  # 15 minutes
+
+
+def _send_reset_email(to_email: str, code: str) -> None:
+    body = (
+        f"Your MoneyMate password reset code is:\n\n"
+        f"  {code}\n\n"
+        f"This code expires in 15 minutes. If you did not request a reset, ignore this email."
+    )
+    msg = MIMEText(body)
+    msg["Subject"] = "MoneyMate — Password Reset Code"
+    msg["From"]    = SMTP_FROM
+    msg["To"]      = to_email
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
+            smtp.starttls()
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+            smtp.send_message(msg)
+    except Exception as e:
+        logger.error("Failed to send reset email to %s: %s", to_email, e)
+        raise HTTPException(500, "Failed to send reset email. Please try again later.")
+
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_WEB", "")
 
 router = APIRouter(tags=["auth"])
+
+
+def _create_default_account(db: Session, user_id: int) -> None:
+    """Create a default Cash account (UAH) for a newly registered user."""
+    default_account = models.Account(
+        user_id=user_id,
+        name="Cash",
+        type="cash",
+        source="manual",
+        external_account_id=None,
+        balance=0.0,
+        currency_code=980,  # UAH
+        created_at=int(time.time()),
+    )
+    db.add(default_account)
+    db.commit()
 
 
 @router.post("/signup", response_model=schemas.UserResponse)
@@ -36,6 +85,7 @@ def signup(request: Request, user: schemas.UserCreate, db: Session = Depends(get
         db.rollback()
         raise HTTPException(500, "Failed to create user")
 
+    _create_default_account(db, new_user.id)
     return new_user
 
 
@@ -89,12 +139,66 @@ def google_auth(request: Request, body: schemas.GoogleAuthRequest, db: Session =
         db.add(user)
         db.commit()
         db.refresh(user)
+        _create_default_account(db, user.id)
 
     return {
         "access_token": create_access_token(user.id),
         "refresh_token": create_refresh_token(user.id),
         "token_type": "bearer",
     }
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+def forgot_password(request: Request, body: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter_by(email=body.email).first()
+    # Always return 200 to avoid leaking which emails are registered
+    if not user:
+        return {"status": "ok"}
+
+    # Invalidate any existing unused tokens for this email
+    db.query(models.PasswordResetToken).filter_by(email=body.email, used=False).delete()
+    db.commit()
+
+    code = str(random.randint(100000, 999999))
+    token = models.PasswordResetToken(
+        email=body.email,
+        code=code,
+        expires_at=int(time.time()) + RESET_CODE_TTL,
+        used=False,
+    )
+    db.add(token)
+    db.commit()
+
+    _send_reset_email(body.email, code)
+    return {"status": "ok"}
+
+
+@router.post("/reset-password")
+@limiter.limit("10/minute")
+def reset_password(request: Request, body: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+
+    token = (
+        db.query(models.PasswordResetToken)
+        .filter_by(email=body.email, code=body.code, used=False)
+        .order_by(models.PasswordResetToken.expires_at.desc())
+        .first()
+    )
+    if not token:
+        raise HTTPException(400, "Invalid or expired reset code")
+    if int(time.time()) > token.expires_at:
+        raise HTTPException(400, "Reset code has expired")
+
+    user = db.query(models.User).filter_by(email=body.email).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    user.password_hash = hash_password(body.new_password)
+    token.used = True
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.delete("/users/me")

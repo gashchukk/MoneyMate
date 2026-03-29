@@ -84,12 +84,12 @@ export default function AccountDetailScreen() {
         apiFetch('/transactions'),
       ]);
       const acc = accs.find((a: Account) => String(a.id) === String(id));
-      if (!acc) { Alert.alert('Not found'); router.back(); return; }
+      if (!acc) { Alert.alert(t('not_found')); router.back(); return; }
       setAccount(acc);
       setTransactions(txs.filter((tx: Transaction) => String(tx.account_id) === String(id)));
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -109,7 +109,7 @@ export default function AccountDetailScreen() {
       router.back();
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
       setDeleting(false);
     }
   };
@@ -171,17 +171,17 @@ export default function AccountDetailScreen() {
           {/* Stats row */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Income</Text>
+              <Text style={styles.statLabel}>{t('income')}</Text>
               <Text style={[styles.statValue, styles.positive]}>+{sym}{totalIn.toFixed(2)}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Expenses</Text>
+              <Text style={styles.statLabel}>{t('expenses')}</Text>
               <Text style={[styles.statValue, styles.negative]}>{sym}{totalOut.toFixed(2)}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Transactions</Text>
+              <Text style={styles.statLabel}>{t('transactions')}</Text>
               <Text style={styles.statValue}>{transactions.length}</Text>
             </View>
           </View>
@@ -198,7 +198,7 @@ export default function AccountDetailScreen() {
             >
               {deleting
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.deleteBtnText}>🗑  Delete</Text>
+                : <Text style={styles.deleteBtnText}>🗑  {t('delete')}</Text>
               }
             </TouchableOpacity>
           </View>
@@ -264,7 +264,7 @@ export default function AccountDetailScreen() {
             <Text style={styles.confirmIcon}>🗑</Text>
             <Text style={styles.confirmTitle}>{t('delete_account')}</Text>
             <Text style={styles.confirmBody}>
-              Are you sure you want to delete "{account?.name}"?{'\n'}This cannot be undone.
+              {t('delete_account_confirm', { name: account?.name })}
             </Text>
             <View style={styles.confirmBtns}>
               <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setShowDeleteConfirm(false)}>

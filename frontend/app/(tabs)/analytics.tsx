@@ -98,6 +98,7 @@ function DonutChart({ slices, size, accentColor, total, sym, selected, onPress }
   slices: Slice[]; size: number; accentColor: string; total: number; sym: string;
   selected: Slice | null; onPress: (s: Slice) => void;
 }) {
+  const { t } = useTranslation();
   const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
   const cx = size / 2, cy = size / 2;
   const R = size / 2 - 4;
@@ -169,7 +170,7 @@ function DonutChart({ slices, size, accentColor, total, sym, selected, onPress }
               {sym}{fmt(total)}
             </Text>
             <Text style={{ fontSize: 9, color: '#bbb', fontWeight: '700', letterSpacing: 0.5, marginTop: 1 }}>
-              TOTAL
+              {t('total_label')}
             </Text>
           </>
         )}
@@ -237,6 +238,8 @@ const statStyles = StyleSheet.create({
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function AnalyticsScreen() {
   const { t } = useTranslation();
+  const { language } = useAppSettings();
+  const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,11 +272,11 @@ export default function AnalyticsScreen() {
       mon.setHours(0, 0, 0, 0);
       const sun = new Date(mon);
       sun.setDate(mon.getDate() + 6);
-      const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const fmt = (d: Date) => d.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
       return `${fmt(mon)} – ${fmt(sun)}`;
     }
     if (rangeMode === 'monthly') {
-      return navDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      return navDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
     }
     return `${navDate.getFullYear()}`;
   }, [rangeMode, navDate]);
@@ -285,7 +288,7 @@ export default function AnalyticsScreen() {
       setAccounts(accs);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -376,10 +379,10 @@ export default function AnalyticsScreen() {
       if (tx.amount > 0 && tx.source !== 'transfer') months[key].inc += tx.amount;
     });
     return Object.entries(months).map(([key, val]) => ({
-      label: new Date(key + '-01').toLocaleDateString('en-GB', { month: 'short' }),
+      label: new Date(key + '-01').toLocaleDateString(locale, { month: 'short' }),
       exp: val.exp, inc: val.inc,
     }));
-  }, [transactions]);
+  }, [transactions, locale]);
 
   // ── Category-drilled transactions ─────────────────────────────────────────
   const catDrilledTxs = useMemo(() => {
@@ -405,8 +408,8 @@ export default function AnalyticsScreen() {
     >
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Analytics</Text>
-        <Text style={styles.headerSub}>{filtered.length} transactions in period</Text>
+        <Text style={styles.headerTitle}>{t('analytics_title')}</Text>
+        <Text style={styles.headerSub}>{t('transactions_in_period', { count: filtered.length })}</Text>
       </View>
 
       {/* ── Date Range Navigator ── */}
@@ -501,13 +504,13 @@ export default function AnalyticsScreen() {
         <>
           {/* Summary stats */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Summary</Text>
+            <Text style={styles.cardTitle}>{t('summary_label')}</Text>
             <StatRow label={t('total_spent')}       value={`${sym}${totalExpenses.toFixed(2)}`}  color="#c0392b" />
-            <StatRow label="Transactions"      value={`${expenses.length}`} />
+            <StatRow label={t('transactions_label')}      value={`${expenses.length}`} />
             <StatRow label={t('average_expense')}   value={expenses.length > 0 ? `${sym}${(totalExpenses / expenses.length).toFixed(2)}` : '—'} />
             <StatRow label={t('largest_expense')}   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
-              <Text style={statStyles.label}>Top Category</Text>
+              <Text style={statStyles.label}>{t('top_category_label')}</Text>
               <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].label, 0) : '#aaa' }]}>
                 {categorySlices[0]?.label ?? '—'}
               </Text>
@@ -523,7 +526,7 @@ export default function AnalyticsScreen() {
           {/* Category breakdown */}
           {categorySlices.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Category Breakdown</Text>
+              <Text style={styles.cardTitle}>{t('category_breakdown_label')}</Text>
               {categorySlices.map((cat, i) => [
                 <TouchableOpacity
                   key={`cat-${i}`}
@@ -545,14 +548,14 @@ export default function AnalyticsScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.drillDesc} numberOfLines={1}>{tx.description || '—'}</Text>
                           <Text style={styles.drillDate}>
-                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                           </Text>
                         </View>
                         <Text style={styles.drillAmount}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                     {catDrilledTxs.length > 8 && (
-                      <Text style={styles.drillMore}>+{catDrilledTxs.length - 8} more</Text>
+                      <Text style={styles.drillMore}>{t('more_items', { count: catDrilledTxs.length - 8 })}</Text>
                     )}
                   </View>
                 ),
@@ -564,7 +567,7 @@ export default function AnalyticsScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>{t('top_expenses')}</Text>
             {expenses.length === 0 ? (
-              <Text style={styles.emptyCard}>No expenses in this period</Text>
+              <Text style={styles.emptyCard}>{t('no_expenses_period')}</Text>
             ) : [...expenses].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 5).map((tx, i, arr) => (
               <TouchableOpacity key={tx.id} style={[styles.topRow, i < arr.length - 1 && styles.topBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
                 <Text style={styles.topRank}>#{i + 1}</Text>
@@ -594,7 +597,9 @@ export default function AnalyticsScreen() {
                 byWeekday[d.getDay()] += Math.abs(tx.amount);
                 byWeekdayCount[d.getDay()]++;
               });
-              const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              const days = Array.from({ length: 7 }, (_, i) =>
+                new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' })
+              );
               const maxDay = Math.max(...byWeekday, 1);
               return (
                 <View style={styles.weekdayRow}>
@@ -610,7 +615,7 @@ export default function AnalyticsScreen() {
                 </View>
               );
             })()}
-            <Text style={styles.habitNote}>Height = total spent · Number = transaction count</Text>
+            <Text style={styles.habitNote}>{t('weekday_hint_expenses')}</Text>
           </View>
         </>
       )}
@@ -622,13 +627,13 @@ export default function AnalyticsScreen() {
         <>
           {/* Summary stats */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Summary</Text>
+            <Text style={styles.cardTitle}>{t('summary_label')}</Text>
             <StatRow label={t('total_income')}      value={`${sym}${totalIncome.toFixed(2)}`}  color="#27ae60" />
-            <StatRow label="Transactions"      value={`${income.length}`} />
+            <StatRow label={t('transactions_label')}      value={`${income.length}`} />
             <StatRow label={t('average_income')}    value={income.length > 0 ? `${sym}${(totalIncome / income.length).toFixed(2)}` : '—'} />
             <StatRow label={t('largest_income')}    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
-              <Text style={statStyles.label}>Top Source</Text>
+              <Text style={statStyles.label}>{t('top_category_label')}</Text>
               <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].label, 0) : '#aaa' }]}>
                 {incomeSlices[0]?.label ?? '—'}
               </Text>
@@ -637,14 +642,14 @@ export default function AnalyticsScreen() {
 
           {/* Category pie */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>By Source / Category</Text>
+            <Text style={styles.cardTitle}>{t('by_source_category')}</Text>
             <CategoryPieChart slices={incomeSlices} total={totalIncome} sym={sym} accentColor="#27ae60" />
           </View>
 
           {/* Category breakdown */}
           {incomeSlices.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Category Breakdown</Text>
+              <Text style={styles.cardTitle}>{t('category_breakdown_label')}</Text>
               {incomeSlices.map((cat, i) => [
                 <TouchableOpacity
                   key={`cat-${i}`}
@@ -666,14 +671,14 @@ export default function AnalyticsScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={styles.drillDesc} numberOfLines={1}>{tx.description || '—'}</Text>
                           <Text style={styles.drillDate}>
-                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                           </Text>
                         </View>
                         <Text style={[styles.drillAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                     {catDrilledTxs.length > 8 && (
-                      <Text style={styles.drillMore}>+{catDrilledTxs.length - 8} more</Text>
+                      <Text style={styles.drillMore}>{t('more_items', { count: catDrilledTxs.length - 8 })}</Text>
                     )}
                   </View>
                 ),
@@ -685,7 +690,7 @@ export default function AnalyticsScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>{t('top_income')}</Text>
             {income.length === 0 ? (
-              <Text style={styles.emptyCard}>No income in this period</Text>
+              <Text style={styles.emptyCard}>{t('no_income_period')}</Text>
             ) : [...income].sort((a, b) => b.amount - a.amount).slice(0, 5).map((tx, i, arr) => (
               <TouchableOpacity key={tx.id} style={[styles.topRow, i < arr.length - 1 && styles.topBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
                 <Text style={styles.topRank}>#{i + 1}</Text>
@@ -715,7 +720,9 @@ export default function AnalyticsScreen() {
                 byWeekday[d.getDay()] += tx.amount;
                 byWeekdayCount[d.getDay()]++;
               });
-              const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              const days = Array.from({ length: 7 }, (_, i) =>
+                new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: 'short' })
+              );
               const maxDay = Math.max(...byWeekday, 1);
               return (
                 <View style={styles.weekdayRow}>
@@ -731,7 +738,7 @@ export default function AnalyticsScreen() {
                 </View>
               );
             })()}
-            <Text style={styles.habitNote}>Height = total received · Number = transaction count</Text>
+            <Text style={styles.habitNote}>{t('weekday_hint_income')}</Text>
           </View>
         </>
       )}

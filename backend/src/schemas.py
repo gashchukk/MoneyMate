@@ -146,6 +146,18 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+# ---------- PASSWORD RESET ----------
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
 # ---------- RECEIPT ----------
 
 class ReceiptImageOut(BaseModel):

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Index, Integer, String, Float, ForeignKey, Text, JSON
+from sqlalchemy import Column, Index, Integer, String, Float, ForeignKey, Text, JSON, Boolean
 from src.database import Base
 
 
@@ -56,6 +56,16 @@ class UserCategory(Base):
     label = Column(String, nullable=False)
     icon = Column(String, nullable=False, default="🏷️")
     color = Column(String, nullable=False, default="#888")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    email      = Column(String, nullable=False, index=True)
+    code       = Column(String, nullable=False)
+    expires_at = Column(Integer, nullable=False)
+    used       = Column(Boolean, nullable=False, default=False)
 
 
 class ReceiptImage(Base):

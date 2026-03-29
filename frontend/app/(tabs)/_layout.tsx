@@ -1,10 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Text, View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings, t } from '@/components/AppContext';
 import { BRAND } from '@/constants/brand';
 
 function TabsWithContext() {
   const { language } = useAppSettings();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -16,8 +18,8 @@ function TabsWithContext() {
           backgroundColor: '#fff',
           borderTopWidth: 1,
           borderTopColor: '#f0f0f0',
-          height: 82,
-          paddingBottom: 16,
+          height: 66 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
@@ -33,7 +35,7 @@ function TabsWithContext() {
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Analytics',
+          title: t('analytics_title', language),
           tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
         }}
       />
@@ -41,7 +43,7 @@ function TabsWithContext() {
       <Tabs.Screen
         name="scan"
         options={{
-          title: 'Scan',
+          title: t('scan_tab', language),
           tabBarIcon: ({ focused }) => (
             <View style={scanBtnStyles.wrapper}>
               <View style={[scanBtnStyles.btn, focused && scanBtnStyles.btnActive]}>
@@ -49,7 +51,7 @@ function TabsWithContext() {
               </View>
             </View>
           ),
-          tabBarLabel: () => <Text style={scanBtnStyles.label}>Scan</Text>,
+          tabBarLabel: () => <Text style={scanBtnStyles.label}>{t('scan_tab', language)}</Text>,
         }}
       />
       <Tabs.Screen

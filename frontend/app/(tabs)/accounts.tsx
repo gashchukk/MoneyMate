@@ -175,12 +175,12 @@ export default function AccountsScreen() {
       } catch {}
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
@@ -263,7 +263,7 @@ export default function AccountsScreen() {
           <Text style={styles.sectionTitle}>{t('currency_rates')}</Text>
           <View style={styles.sectionActions}>
             <TouchableOpacity style={styles.convertBtn} onPress={() => setShowConverter(true)}>
-              <Text style={styles.convertBtnText}>⇄ Convert</Text>
+              <Text style={styles.convertBtnText}>{t('convert_button')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.editCurrenciesBtn} onPress={() => setShowCurrencyPicker(true)}>
               <Text style={styles.editCurrenciesBtnText}>⚙</Text>
@@ -289,7 +289,7 @@ export default function AccountsScreen() {
           ))}
           {selectedCurrencies.length === 0 && (
             <TouchableOpacity style={styles.rateCardEmpty} onPress={() => setShowCurrencyPicker(true)}>
-              <Text style={styles.rateCardEmptyText}>+ Add currencies</Text>
+              <Text style={styles.rateCardEmptyText}>{t('add_currencies')}</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
@@ -337,11 +337,11 @@ export default function AccountsScreen() {
                       {(acc.credit_limit ?? 0) > 0 && (
                         <>
                           <Text style={styles.creditRow}>
-                            <Text style={styles.creditLabel}>Credit </Text>
+                            <Text style={styles.creditLabel}>{t('credit')} </Text>
                             <Text style={styles.creditValue}>{currencySymbol(acc.currency_code)}{acc.credit_limit!.toFixed(2)}</Text>
                           </Text>
                           <Text style={styles.creditRow}>
-                            <Text style={styles.creditLabel}>Personal  </Text>
+                            <Text style={styles.creditLabel}>{t('personal')}  </Text>
                             <Text style={[styles.creditValue, personalBalance(acc) < 0 && { color: NEGATIVE }]}>
                               {currencySymbol(acc.currency_code)}{personalBalance(acc).toFixed(2)}
                             </Text>
@@ -380,7 +380,7 @@ export default function AccountsScreen() {
             <View style={styles.chartHeader}>
               <Text style={styles.chartFlag}>{CURRENCY_FLAGS[chartCurrency] ?? '🏳️'}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.chartCurrencyCode}>{chartCurrency} / UAH</Text>
+                <Text style={styles.chartCurrencyCode}>{chartCurrency} {t('per_uah')}</Text>
                 <Text style={styles.chartCurrentRate}>
                   ₴{(allRates[chartCurrency] ?? 0).toFixed(4)}
                 </Text>
@@ -409,7 +409,7 @@ export default function AccountsScreen() {
                 <ActivityIndicator color={BRAND} style={{ marginVertical: 40 }} />
               ) : chartPoints.length < 2 ? (
                 <View style={styles.chartEmpty}>
-                  <Text style={styles.chartEmptyText}>No data available</Text>
+                  <Text style={styles.chartEmptyText}>{t('no_data')}</Text>
                 </View>
               ) : (() => {
                 const vals = chartPoints.map(p => p.value);
@@ -491,19 +491,19 @@ export default function AccountsScreen() {
               return (
                 <View style={styles.statsRow}>
                   <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>Min</Text>
+                    <Text style={styles.statLabel}>{t('min_label')}</Text>
                     <Text style={styles.statValue}>₴{mn.toFixed(2)}</Text>
                   </View>
                   <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>Avg</Text>
+                    <Text style={styles.statLabel}>{t('avg_label')}</Text>
                     <Text style={styles.statValue}>₴{avg.toFixed(2)}</Text>
                   </View>
                   <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>Max</Text>
+                    <Text style={styles.statLabel}>{t('max_label')}</Text>
                     <Text style={styles.statValue}>₴{mx.toFixed(2)}</Text>
                   </View>
                   <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>Change</Text>
+                    <Text style={styles.statLabel}>{t('change_label')}</Text>
                     <Text style={[styles.statValue, { color: change >= 0 ? '#2e7d32' : '#c62828' }]}>
                       {change >= 0 ? '+' : ''}{changePct.toFixed(2)}%
                     </Text>
@@ -524,8 +524,8 @@ export default function AccountsScreen() {
 
             <View style={styles.sheet}>
               <View style={styles.handle} />
-              <Text style={styles.sheetTitle}>Currency Converter</Text>
-              <Text style={styles.sheetSubtitle}>NBU rates · {new Date().toLocaleDateString('uk-UA')}</Text>
+              <Text style={styles.sheetTitle}>{t('currency_converter_title')}</Text>
+              <Text style={styles.sheetSubtitle}>{t('nbu_rates_prefix')} · {new Date().toLocaleDateString('uk-UA')}</Text>
 
               {/* Amount input */}
               <TextInput
@@ -595,14 +595,14 @@ export default function AccountsScreen() {
           <Pressable style={styles.backdrop} onPress={() => { setShowCurrencyPicker(false); setCurrencySearch(''); }} />
           <View style={[styles.sheet, styles.pickerSheet]}>
             <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>Manage Currencies</Text>
-            <Text style={styles.sheetSubtitle}>Choose currencies shown in rate cards & converter</Text>
+            <Text style={styles.sheetTitle}>{t('manage_currencies_title')}</Text>
+            <Text style={styles.sheetSubtitle}>{t('manage_currencies_sub')}</Text>
 
             <TextInput
               style={styles.pickerSearch}
               value={currencySearch}
               onChangeText={setCurrencySearch}
-              placeholder="Search by code or name…"
+              placeholder={t('search_currency_placeholder')}
               placeholderTextColor="#bbb"
               clearButtonMode="while-editing"
             />

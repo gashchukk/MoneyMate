@@ -48,7 +48,7 @@ Rules:
 - For category: match to the closest option from the allowed list
 - Parse Ukrainian (Cyrillic) text correctly
 - Strip trailing/leading whitespace from all strings
-- Return null for any field you cannot confidently determine
+- Return null for any field you cannot confidently determine, If you are not sure about any field, return null for that field
 """
 
 

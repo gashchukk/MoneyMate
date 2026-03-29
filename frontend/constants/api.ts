@@ -1,7 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
+const extra = Constants.expoConfig?.extra ?? {};
+export const API_BASE_URL: string = extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? '';
 
 export class SessionExpiredError extends Error {
   constructor() {

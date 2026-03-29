@@ -13,17 +13,21 @@ import {
   Alert,
   Image,
   StatusBar,
+  Modal,
 } from "react-native";
 import { API_BASE_URL } from '@/constants/api';
 import { BRAND, BRAND_LIGHT, BRAND_MID } from '@/constants/brand';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import Constants from 'expo-constants';
+import { useTranslation } from 'react-i18next';
 
+const extra = Constants.expoConfig?.extra ?? {};
 
 GoogleSignin.configure({
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '',
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ?? '',
+  iosClientId: extra.googleClientIdIos ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '',
+  webClientId: extra.googleClientIdWeb ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ?? '',
 });
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 type Mode = "login" | "signup";
@@ -66,6 +70,7 @@ async function apiSignup(email: string, password: string): Promise<UserResponse>
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function AuthScreen() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -74,6 +79,14 @@ export default function AuthScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Forgot password modal state
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'email' | 'code'>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
 
   // Animations
@@ -102,7 +115,7 @@ export default function AuthScreen() {
       router.replace('/(tabs)');
     } catch (e: any) {
       if (e.code !== statusCodes.SIGN_IN_CANCELLED) {
-        Alert.alert('Google login failed', e.message);
+        Alert.alert(t('google_login_failed'), e.message);
       }
     } finally {
       setGoogleLoading(false);
@@ -137,20 +150,78 @@ export default function AuthScreen() {
     ]).start();
   };
 
+  const openForgot = () => {
+    setForgotEmail('');
+    setResetCode('');
+    setResetPassword('');
+    setForgotStep('email');
+    setShowForgot(true);
+  };
+
+  const handleSendCode = async () => {
+    const em = forgotEmail.trim();
+    if (!em || !em.includes('@')) {
+      Alert.alert(t('invalid_email'), t('please_enter_valid_email'));
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: em }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to send code');
+      setForgotStep('code');
+    } catch (e: any) {
+      Alert.alert(t('error'), e.message);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (resetCode.length !== 6) {
+      Alert.alert(t('error'), t('reset_code_label') + ': 6 digits required');
+      return;
+    }
+    if (resetPassword.length < 8) {
+      Alert.alert(t('weak_password'), t('password_min_8'));
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim(), code: resetCode.trim(), new_password: resetPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Reset failed');
+      setShowForgot(false);
+      Alert.alert('✅', t('password_reset_success'));
+    } catch (e: any) {
+      Alert.alert(t('error'), e.message);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
       shake();
-      Alert.alert("Missing fields", "Please fill in all fields.");
+      Alert.alert(t('missing_fields'), t('please_fill_all_fields'));
       return;
     }
     if (mode === "signup" && password !== confirmPassword) {
       shake();
-      Alert.alert("Password mismatch", "Passwords do not match.");
+      Alert.alert(t('password_mismatch'), t('passwords_do_not_match'));
       return;
     }
     if (password.length < 8) {
       shake();
-      Alert.alert("Weak password", "Password must be at least 8 characters.");
+      Alert.alert(t('weak_password'), t('password_min_8'));
       return;
     }
 
@@ -163,12 +234,12 @@ export default function AuthScreen() {
         router.replace('/(tabs)');
       } else {
         await apiSignup(email.trim(), password);
-        Alert.alert("Account created! 🎉", "Please log in to continue.");
+        Alert.alert(t('account_created'), t('please_log_in_continue'));
         switchMode("login");
       }
     } catch (err: any) {
       shake();
-      Alert.alert("Oops", err.message || "Something went wrong.");
+      Alert.alert(t('error'), err.message || t('something_went_wrong'));
     } finally {
       setLoading(false);
     }
@@ -202,7 +273,7 @@ export default function AuthScreen() {
             resizeMode="contain"
           />
           <Text style={styles.appName}>MoneyMate</Text>
-          <Text style={styles.tagline}>Your finances, finally clear.</Text>
+          <Text style={styles.tagline}>{t('tagline')}</Text>
         </View>
 
         {/* ── CARD ── */}
@@ -212,22 +283,22 @@ export default function AuthScreen() {
             <Animated.View style={[styles.tabIndicator, { left: tabIndicatorLeft }]} />
             <TouchableOpacity style={styles.tab} onPress={() => switchMode("login")}>
               <Text style={[styles.tabText, mode === "login" && styles.tabTextActive]}>
-                Log In
+                {t('log_in_tab')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.tab} onPress={() => switchMode("signup")}>
               <Text style={[styles.tabText, mode === "signup" && styles.tabTextActive]}>
-                Sign Up
+                {t('sign_up_tab')}
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Fields */}
           <Animated.View style={{ opacity: fadeAnim }}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>{t('email_label')}</Text>
             <TextInput
               style={[styles.input, focusedField === "email" && styles.inputFocused]}
-              placeholder="you@example.com"
+              placeholder={t('placeholder_email')}
               placeholderTextColor="#bbb"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -238,11 +309,11 @@ export default function AuthScreen() {
               onBlur={() => setFocusedField(null)}
             />
 
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>{t('password_label')}</Text>
             <View style={[styles.passwordRow, focusedField === "password" && styles.passwordRowFocused]}>
               <TextInput
                 style={styles.inputFlex}
-                placeholder="Min. 8 characters"
+                placeholder={t('min_8_characters')}
                 placeholderTextColor="#bbb"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -261,10 +332,10 @@ export default function AuthScreen() {
 
             {mode === "signup" && (
               <>
-                <Text style={styles.label}>Confirm Password</Text>
+                <Text style={styles.label}>{t('confirm_password_label')}</Text>
                 <TextInput
                   style={[styles.input, focusedField === "confirm" && styles.inputFocused]}
-                  placeholder="Repeat your password"
+                  placeholder={t('placeholder_repeat_password')}
                   placeholderTextColor="#bbb"
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
@@ -277,16 +348,8 @@ export default function AuthScreen() {
             )}
 
             {mode === "login" && (
-              <TouchableOpacity
-                style={styles.forgotBtn}
-                onPress={() =>
-                  Alert.alert(
-                    "Forgot password?",
-                    "Log in and go to Settings → Change Password to update your password.",
-                  )
-                }
-              >
-                <Text style={styles.forgotText}>Forgot password?</Text>
+              <TouchableOpacity style={styles.forgotBtn} onPress={openForgot}>
+                <Text style={styles.forgotText}>{t('forgot_password')}</Text>
               </TouchableOpacity>
             )}
 
@@ -301,7 +364,7 @@ export default function AuthScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.submitText}>
-                  {mode === "login" ? "Log In" : "Create Account"}
+                  {mode === "login" ? t('log_in_tab') : t('create_account')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -309,7 +372,7 @@ export default function AuthScreen() {
             {/* Divider */}
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
+              <Text style={styles.dividerText}>{t('or_divider')}</Text>
               <View style={styles.dividerLine} />
             </View>
 
@@ -325,7 +388,7 @@ export default function AuthScreen() {
               ) : (
                 <>
                   <Text style={styles.googleIcon}>G</Text>
-                  <Text style={styles.googleText}>Continue with Google</Text>
+                  <Text style={styles.googleText}>{t('continue_with_google')}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -333,19 +396,93 @@ export default function AuthScreen() {
             {/* Switch mode hint */}
             <View style={styles.switchRow}>
               <Text style={styles.switchText}>
-                {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+                {mode === "login" ? t('dont_have_account') + ' ' : t('already_have_account') + ' '}
               </Text>
               <TouchableOpacity onPress={() => switchMode(mode === "login" ? "signup" : "login")}>
                 <Text style={styles.switchLink}>
-                  {mode === "login" ? "Sign up" : "Log in"}
+                  {mode === "login" ? t('sign_up_link') : t('log_in_link')}
                 </Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
         </Animated.View>
 
-        <Text style={styles.footer}>By continuing, you agree to our Terms & Privacy Policy.</Text>
+        <Text style={styles.footer}>{t('terms_privacy')}</Text>
       </ScrollView>
+
+      {/* ── Forgot Password Modal ── */}
+      <Modal visible={showForgot} transparent animationType="slide" onRequestClose={() => setShowForgot(false)}>
+        <KeyboardAvoidingView style={styles.forgotOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.forgotCard}>
+            <Text style={styles.forgotModalTitle}>{t('forgot_password')}</Text>
+
+            {forgotStep === 'email' ? (
+              <>
+                <Text style={styles.forgotModalSub}>{t('enter_reset_email')}</Text>
+                <Text style={styles.label}>{t('email_label')}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('placeholder_email')}
+                  placeholderTextColor="#bbb"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={forgotEmail}
+                  onChangeText={setForgotEmail}
+                />
+                <TouchableOpacity
+                  style={[styles.submitBtn, forgotLoading && styles.submitBtnDisabled]}
+                  onPress={handleSendCode}
+                  disabled={forgotLoading}
+                >
+                  {forgotLoading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.submitText}>{t('send_reset_code')}</Text>
+                  }
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.forgotModalSub}>{t('reset_code_sent_msg', { email: forgotEmail })}</Text>
+                <Text style={styles.label}>{t('reset_code_label')}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('reset_code_placeholder')}
+                  placeholderTextColor="#bbb"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                />
+                <Text style={styles.label}>{t('new_password_label')}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('min_8_characters')}
+                  placeholderTextColor="#bbb"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={resetPassword}
+                  onChangeText={setResetPassword}
+                />
+                <TouchableOpacity
+                  style={[styles.submitBtn, forgotLoading && styles.submitBtnDisabled]}
+                  onPress={handleResetPassword}
+                  disabled={forgotLoading}
+                >
+                  {forgotLoading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.submitText}>{t('set_new_password')}</Text>
+                  }
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity style={styles.forgotBackBtn} onPress={() => setShowForgot(false)}>
+              <Text style={styles.forgotBackText}>{t('back_to_login')}</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -617,5 +754,42 @@ const styles = StyleSheet.create({
     color: "#bbb",
     marginTop: 28,
     lineHeight: 16,
+  },
+
+  // Forgot password modal
+  forgotOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  forgotCard: {
+    backgroundColor: CARD_BG,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 28,
+    paddingBottom: 44,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  forgotModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: TEXT,
+    marginBottom: 8,
+  },
+  forgotModalSub: {
+    fontSize: 14,
+    color: TEXT_MUTED,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  forgotBackBtn: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  forgotBackText: {
+    fontSize: 14,
+    color: BRAND,
+    fontWeight: '600',
   },
 });

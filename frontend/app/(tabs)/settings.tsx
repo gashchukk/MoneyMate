@@ -86,7 +86,7 @@ export default function SettingsScreen() {
             setSelectedIds(new Set(monoAccs.map((a: any) => a.id)));
             setShowAccountPicker(true);
           } catch (e: any) {
-            Alert.alert('Sync failed', e.message);
+            Alert.alert(t('sync_failed'), e.message);
           } finally {
             setSyncLoading(false);
           }
@@ -102,11 +102,11 @@ export default function SettingsScreen() {
     if (monoStatus?.linked) {
       const confirmed = await new Promise<boolean>(resolve =>
         Alert.alert(
-          'Already linked',
-          `You already have ${monoStatus.accounts} Monobank account${monoStatus.accounts !== 1 ? 's' : ''} connected. Relinking will replace them.`,
+          t('already_linked'),
+          t('relink_confirm_msg', { count: monoStatus.accounts }),
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Relink', style: 'destructive', onPress: () => resolve(true) },
+            { text: t('cancel'), style: 'cancel', onPress: () => resolve(false) },
+            { text: t('relink_monobank'), style: 'destructive', onPress: () => resolve(true) },
           ],
         )
       );
@@ -130,11 +130,11 @@ export default function SettingsScreen() {
           setMonoQrUrl(url);
         }
       } else {
-        Alert.alert('Monobank', 'Request sent. Check the Monobank app to approve.');
+        Alert.alert(t('monobank'), t('request_sent_mono'));
       }
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setMonoLoading(false);
     }
@@ -145,11 +145,11 @@ export default function SettingsScreen() {
     if (monoStatus?.linked) {
       const confirmed = await new Promise<boolean>(resolve =>
         Alert.alert(
-          'Already linked',
-          `You already have ${monoStatus.accounts} Monobank account${monoStatus.accounts !== 1 ? 's' : ''} connected. Relinking will replace them.`,
+          t('already_linked'),
+          t('relink_confirm_msg', { count: monoStatus.accounts }),
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Relink', style: 'destructive', onPress: () => resolve(true) },
+            { text: t('cancel'), style: 'cancel', onPress: () => resolve(false) },
+            { text: t('relink_monobank'), style: 'destructive', onPress: () => resolve(true) },
           ],
         )
       );
@@ -169,7 +169,7 @@ export default function SettingsScreen() {
       setMonoQrUrl(url);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setMonoLoading(false);
     }
@@ -179,15 +179,15 @@ export default function SettingsScreen() {
   const handleMonoSync = async () => {
     const requestId = await SecureStore.getItemAsync('mono_request_id');
     if (!requestId) {
-      Alert.alert('Not linked', 'Please link your Monobank account first.');
+      Alert.alert(t('not_linked'), t('please_link_mono_first'));
       return;
     }
     setSyncLoading(true);
     try {
       await apiFetch(`/mono/sync-transactions?request_id=${requestId}`, { method: 'POST' }, { skipRedirect: true });
-      Alert.alert('✅ Synced', 'New transactions imported.');
+      Alert.alert(t('synced'), t('new_transactions_imported'));
     } catch (e: any) {
-      Alert.alert('Sync failed', e.message);
+      Alert.alert(t('sync_failed'), e.message);
     } finally {
       setSyncLoading(false);
     }
@@ -208,10 +208,10 @@ export default function SettingsScreen() {
 
       setShowAccountPicker(false);
       loadMonoStatus();
-      Alert.alert('✅ Linked & Synced', `${selectedIds.size} account${selectedIds.size !== 1 ? 's' : ''} linked and transactions imported.`);
+      Alert.alert(t('linked_and_synced'), t('accounts_linked_imported', { count: selectedIds.size }));
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setConfirming(false);
       pendingRequestIdRef.current = null;
@@ -221,13 +221,13 @@ export default function SettingsScreen() {
   // ── Change password ───────────────────────────────────────────────────────
   const handleChangePassword = async () => {
     if (!currentPw || !newPw || !confirmPw) {
-      Alert.alert('Missing fields', 'Please fill in all fields.'); return;
+      Alert.alert(t('missing_fields'), t('please_fill_all_fields')); return;
     }
     if (newPw.length < 8) {
-      Alert.alert('Weak password', 'New password must be at least 8 characters.'); return;
+      Alert.alert(t('weak_password'), t('password_min_8')); return;
     }
     if (newPw !== confirmPw) {
-      Alert.alert('Mismatch', 'New passwords do not match.'); return;
+      Alert.alert(t('mismatch'), t('passwords_no_match')); return;
     }
     setChangePwLoading(true);
     try {
@@ -235,12 +235,12 @@ export default function SettingsScreen() {
         method: 'POST',
         body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
       });
-      Alert.alert('Done', 'Password updated successfully.');
+      Alert.alert(t('done'), t('password_updated'));
       setShowChangePw(false);
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setChangePwLoading(false);
     }
@@ -274,7 +274,7 @@ export default function SettingsScreen() {
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert(t('logout'), 'Are you sure?', [
+    Alert.alert(t('logout'), t('logout_confirm'), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('logout'), style: 'destructive',
@@ -300,9 +300,9 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>{t('system_currency')}</Text>
       <View style={styles.card}>
         {([
-          { c: 'UAH' as Currency, flag: '🇺🇦', name: 'Ukrainian Hryvnia', rate: '1.00 ₴' },
-          { c: 'USD' as Currency, flag: '🇺🇸', name: 'US Dollar', rate: rates ? `${rates.USD.toFixed(2)} ₴` : '…' },
-          { c: 'EUR' as Currency, flag: '🇪🇺', name: 'Euro', rate: rates ? `${rates.EUR.toFixed(2)} ₴` : '…' },
+          { c: 'UAH' as Currency, flag: '🇺🇦', name: t('ukrainian_hryvnia'), rate: '1.00 ₴' },
+          { c: 'USD' as Currency, flag: '🇺🇸', name: t('us_dollar'), rate: rates ? `${rates.USD.toFixed(2)} ₴` : '…' },
+          { c: 'EUR' as Currency, flag: '🇪🇺', name: t('euro_name'), rate: rates ? `${rates.EUR.toFixed(2)} ₴` : '…' },
         ]).map(({ c, flag, name, rate }, i, arr) => (
           <TouchableOpacity
             key={c}
@@ -339,7 +339,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Account ── */}
-      <Text style={styles.sectionTitle}>Account</Text>
+      <Text style={styles.sectionTitle}>{t('account_section')}</Text>
       <View style={styles.card}>
         <TouchableOpacity style={[styles.actionRow, styles.optionBorder]} onPress={() => setShowChangePw(true)}>
           <View style={styles.actionLeft}>
@@ -366,8 +366,8 @@ export default function SettingsScreen() {
             <Text style={styles.monoStatusDot}>{monoStatus.linked ? '🟢' : '🔴'}</Text>
             <Text style={[styles.monoStatusText, { color: monoStatus.linked ? '#27ae60' : '#e67e22' }]}>
               {monoStatus.linked
-                ? `Connected · ${monoStatus.accounts} account${monoStatus.accounts !== 1 ? 's' : ''} synced`
-                : 'Not connected — link your Monobank account below'}
+                ? t('mono_connected_status', { count: monoStatus.accounts })
+                : t('mono_not_connected_status')}
             </Text>
           </View>
         )}
@@ -381,11 +381,11 @@ export default function SettingsScreen() {
             <Text style={styles.actionIcon}>📱</Text>
             <View>
               <Text style={styles.actionLabel}>
-                {monoStatus?.linked ? 'Relink Monobank' : t('link_monobank')}
+                {monoStatus?.linked ? t('relink_monobank') : t('link_monobank')}
               </Text>
               {waitingForMono
-                ? <Text style={styles.actionHint}>Waiting for approval in Monobank app…</Text>
-                : <Text style={styles.actionHint}>Opens Monobank app to authorise access</Text>}
+                ? <Text style={styles.actionHint}>{t('waiting_for_approval')}</Text>
+                : <Text style={styles.actionHint}>{t('opens_monobank_app')}</Text>}
             </View>
           </View>
           {monoLoading || waitingForMono
@@ -401,8 +401,8 @@ export default function SettingsScreen() {
           <View style={styles.actionLeft}>
             <Text style={styles.actionIcon}>📷</Text>
             <View>
-              <Text style={styles.actionLabel}>Generate Link QR Code</Text>
-              <Text style={styles.actionHint}>Use this if Monobank is not installed on this phone</Text>
+              <Text style={styles.actionLabel}>{t('generate_qr_code')}</Text>
+              <Text style={styles.actionHint}>{t('use_if_no_mono')}</Text>
             </View>
           </View>
           {monoLoading
@@ -419,7 +419,7 @@ export default function SettingsScreen() {
             <Text style={styles.actionIcon}>🔄</Text>
             <View>
               <Text style={styles.actionLabel}>{t('sync_mono')}</Text>
-              <Text style={styles.actionHint}>Manually pull last 30 days</Text>
+              <Text style={styles.actionHint}>{t('manually_pull_last_30_days')}</Text>
             </View>
           </View>
           {syncLoading ? <ActivityIndicator color={BRAND} /> : <Text style={styles.chevron}>›</Text>}
@@ -431,7 +431,7 @@ export default function SettingsScreen() {
         <Text style={styles.logoutText}>{t('logout')}</Text>
       </TouchableOpacity>
 
-      <Text style={styles.version}>MoneyMate v1.0</Text>
+      <Text style={styles.version}>{t('version')}</Text>
     </ScrollView>
 
     {/* ── Monobank QR Modal ── */}
@@ -439,9 +439,9 @@ export default function SettingsScreen() {
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { alignItems: 'center', paddingBottom: 36 }]}>
           <View style={styles.modalHandle} />
-          <Text style={styles.modalTitle}>Scan with Monobank</Text>
+          <Text style={styles.modalTitle}>{t('qr_modal_title')}</Text>
           <Text style={[styles.actionHint, { textAlign: 'center', marginBottom: 28, fontSize: 13 }]}>
-            Open the Monobank app on another device and scan this QR code to authorise access. Once approved, tap the button below.
+            {t('qr_modal_sub')}
           </Text>
           {monoQrUrl && (
             <QRCode value={monoQrUrl} size={220} />
@@ -466,7 +466,7 @@ export default function SettingsScreen() {
                   const accounts = await apiFetch('/accounts');
                   const monoAccs = accounts.filter((a: any) => a.source === 'mono');
                   if (monoAccs.length === 0) {
-                    Alert.alert('Not approved yet', 'No accounts found. Please approve in the Monobank app first.');
+                    Alert.alert(t('not_approved_yet'), t('no_accounts_found'));
                     return;
                   }
                   pendingRequestIdRef.current = requestId;
@@ -474,7 +474,7 @@ export default function SettingsScreen() {
                   setSelectedIds(new Set(monoAccs.map((a: any) => a.id)));
                   setShowAccountPicker(true);
                 } catch (e: any) {
-                  Alert.alert('Sync failed', e.message);
+                  Alert.alert(t('sync_failed'), e.message);
                 } finally {
                   setSyncLoading(false);
                   setWaitingForMono(false);
@@ -484,7 +484,7 @@ export default function SettingsScreen() {
             >
               {syncLoading
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.saveBtnText}>I approved — Sync</Text>}
+                : <Text style={styles.saveBtnText}>{t('i_approved_sync')}</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -497,7 +497,7 @@ export default function SettingsScreen() {
         <View style={[styles.modalCard, { paddingBottom: 32 }]}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{t('choose_accounts')}</Text>
-          <Text style={styles.pickerSubtitle}>Select which Monobank accounts to track. Others will be removed.</Text>
+          <Text style={styles.pickerSubtitle}>{t('select_which_monobank_accounts')}</Text>
 
           {pickerAccounts.map((acc, i) => {
             const active = selectedIds.has(acc.id);
@@ -537,8 +537,8 @@ export default function SettingsScreen() {
                 if (rid) {
                   setSyncLoading(true);
                   apiFetch(`/mono/sync-transactions?request_id=${rid}`, { method: 'POST' }, { skipRedirect: true })
-                    .then(() => { loadMonoStatus(); Alert.alert('✅ Synced', 'All accounts linked.'); })
-                    .catch((e: any) => Alert.alert('Sync failed', e.message))
+                    .then(() => { loadMonoStatus(); Alert.alert(t('synced'), t('all_accounts_linked')); })
+                    .catch((e: any) => Alert.alert(t('sync_failed'), e.message))
                     .finally(() => { setSyncLoading(false); pendingRequestIdRef.current = null; });
                 }
               }}
@@ -569,7 +569,7 @@ export default function SettingsScreen() {
           <Text style={styles.modalLabel}>{t('current_password')}</Text>
           <TextInput
             style={styles.modalInput}
-            placeholder="Enter current password"
+            placeholder={t('enter_current_password')}
             placeholderTextColor="#bbb"
             secureTextEntry
             value={currentPw}
@@ -579,7 +579,7 @@ export default function SettingsScreen() {
           <Text style={styles.modalLabel}>{t('new_password')}</Text>
           <TextInput
             style={styles.modalInput}
-            placeholder="Min. 8 characters"
+            placeholder={t('min_8_characters')}
             placeholderTextColor="#bbb"
             secureTextEntry
             value={newPw}
@@ -589,7 +589,7 @@ export default function SettingsScreen() {
           <Text style={styles.modalLabel}>{t('confirm_new_password')}</Text>
           <TextInput
             style={styles.modalInput}
-            placeholder="Repeat new password"
+            placeholder={t('repeat_new_password')}
             placeholderTextColor="#bbb"
             secureTextEntry
             value={confirmPw}

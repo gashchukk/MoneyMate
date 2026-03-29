@@ -19,7 +19,10 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "static"
@@ -63,6 +66,16 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "apiUrl": "https://moneymate-production-ebfd.up.railway.app",
+      "googleClientIdIos": "1044437157993-3q2s17fmbf2th1vob36sb9krpjujb7cs.apps.googleusercontent.com",
+      "googleClientIdAndroid": "1044437157993-qtqt3o9nansbr9t1u3cf4dvahdd1bk9r.apps.googleusercontent.com",
+      "googleClientIdWeb": "1044437157993-soq2bklhq1hu4rpuihlitq5iq8bq3bpi.apps.googleusercontent.com",
+      "router": {},
+      "eas": {
+        "projectId": "a16b5b08-2e3d-4810-9f4d-0d90d7c9cafa"
+      }
     }
   }
 }

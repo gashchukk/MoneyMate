@@ -6,7 +6,10 @@ import * as SecureStore from 'expo-secure-store';
 import { LogBox } from 'react-native';
 import 'react-native-reanimated';
 
-LogBox.ignoreLogs(['Sending `onAnimatedValueUpdate` with no listeners registered.']);
+LogBox.ignoreLogs([
+  'Sending `onAnimatedValueUpdate` with no listeners registered.',
+  'Unable to activate keep awake',
+]);
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppProvider } from '@/components/AppContext';

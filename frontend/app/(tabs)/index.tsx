@@ -158,7 +158,7 @@ export default function TransactionsScreen() {
       fetchAll();
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     }
   };
 
@@ -182,12 +182,12 @@ export default function TransactionsScreen() {
       detectPotentialTransfers(txs);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
@@ -196,7 +196,7 @@ export default function TransactionsScreen() {
     const name = newCategoryName.trim();
     if (!name) return;
     if (allCategories.find(c => c.label.toLowerCase() === name.toLowerCase())) {
-      Alert.alert('Already exists', 'A category with this name already exists.');
+      Alert.alert(t('already_exists'), t('category_already_exists'));
       return;
     }
     try {
@@ -208,7 +208,7 @@ export default function TransactionsScreen() {
       setCategory(name);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     }
     setNewCategoryName('');
     setShowNewCategory(false);
@@ -218,12 +218,12 @@ export default function TransactionsScreen() {
   const handleSubmit = async () => {
     const parsedAmount = parseFloat(amount);
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a positive number.'); return;
+      Alert.alert(t('invalid_amount'), t('please_enter_positive_number')); return;
     }
-    if (!accountId) { Alert.alert('Missing account', 'Please select an account.'); return; }
+    if (!accountId) { Alert.alert(t('missing_fields'), t('please_select_account')); return; }
     if (txMode === 'transfer') {
-      if (!toAccountId) { Alert.alert('Missing account', 'Please select a destination account.'); return; }
-      if (accountId === toAccountId) { Alert.alert('Invalid', 'Source and destination must differ.'); return; }
+      if (!toAccountId) { Alert.alert(t('missing_fields'), t('please_select_account')); return; }
+      if (accountId === toAccountId) { Alert.alert(t('missing_fields'), t('source_destination_must_differ')); return; }
     }
 
     setSaving(true);
@@ -234,19 +234,19 @@ export default function TransactionsScreen() {
       if (txMode === 'deposit') {
         await apiFetch('/transactions/manual', {
           method: 'POST',
-          body: JSON.stringify({ ...base, description: description || 'Deposit', amount: parsedAmount, account_id: parseInt(accountId) }),
+          body: JSON.stringify({ ...base, description: description || t('deposit'), amount: parsedAmount, account_id: parseInt(accountId) }),
         });
       } else if (txMode === 'withdrawal') {
         await apiFetch('/transactions/manual', {
           method: 'POST',
-          body: JSON.stringify({ ...base, description: description || 'Withdrawal', amount: -parsedAmount, account_id: parseInt(accountId) }),
+          body: JSON.stringify({ ...base, description: description || t('withdrawal'), amount: -parsedAmount, account_id: parseInt(accountId) }),
         });
       } else {
         const fromName = accounts.find(a => String(a.id) === accountId)?.name ?? 'account';
         const toName = accounts.find(a => String(a.id) === toAccountId)?.name ?? 'account';
         await Promise.all([
-          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `Transfer → ${toName}`, amount: -parsedAmount, account_id: parseInt(accountId), category: 'Transfer' }) }),
-          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `Transfer ← ${fromName}`, amount: parsedAmount, account_id: parseInt(toAccountId), category: 'Transfer' }) }),
+          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `${t('transfer')} → ${toName}`, amount: -parsedAmount, account_id: parseInt(accountId), category: 'Transfer' }) }),
+          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `${t('transfer')} ← ${fromName}`, amount: parsedAmount, account_id: parseInt(toAccountId), category: 'Transfer' }) }),
         ]);
       }
 
@@ -255,7 +255,7 @@ export default function TransactionsScreen() {
       fetchAll();
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setSaving(false);
     }
@@ -297,9 +297,18 @@ export default function TransactionsScreen() {
 
       {/* ── Month Switcher ── */}
       <View style={styles.monthRow}>
+        <View style={styles.monthSide}>
+          <TouchableOpacity
+            style={styles.todayBtn}
+            onPress={() => { setMonth(today.getMonth()); setYear(today.getFullYear()); }}
+          >
+            <Text style={styles.todayBtnText}>{t('today')}</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity onPress={prevMonth} style={styles.monthArrow}><Text style={styles.monthArrowText}>‹</Text></TouchableOpacity>
         <Text style={styles.monthLabel}>{monthNames[month]} {year}</Text>
         <TouchableOpacity onPress={nextMonth} style={styles.monthArrow}><Text style={styles.monthArrowText}>›</Text></TouchableOpacity>
+        <View style={styles.monthSide} />
       </View>
 
       {/* ── Potential transfers banner ── */}
@@ -307,7 +316,7 @@ export default function TransactionsScreen() {
         <TouchableOpacity style={styles.transferBanner} onPress={() => setShowTransferReview(true)} activeOpacity={0.8}>
           <Text style={styles.transferBannerIcon}>↔️</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.transferBannerTitle}>{potentialTransfers.length} possible transfer{potentialTransfers.length > 1 ? 's' : ''} found</Text>
+            <Text style={styles.transferBannerTitle}>{t('possible_transfers_found', { count: potentialTransfers.length })}</Text>
             <Text style={styles.transferBannerSub}>{t('tap_to_review_transfers')}</Text>
           </View>
           <Text style={styles.transferBannerArrow}>›</Text>
@@ -323,14 +332,14 @@ export default function TransactionsScreen() {
               <Text style={styles.reviewClose}>{t('done')}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.reviewSub}>These transactions may be the same transfer. Merging marks both as "Transfer" and removes them from analytics.</Text>
+          <Text style={styles.reviewSub}>{t('merging_marks_both')}</Text>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 14 }}>
             {potentialTransfers.map(({ cashTx, monoTx }) => {
               const cashAcc = accounts.find(a => a.id === cashTx.account_id);
               const monoAcc = accounts.find(a => a.id === monoTx.account_id);
               const sym = currencySymbol(cashTx.currency_code);
               const fmtDate = (tx: Transaction) => new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time)
-                .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                .toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'short' });
               return (
                 <View key={`${cashTx.id}-${monoTx.id}`} style={styles.reviewCard}>
                   <View style={styles.reviewRow}>
@@ -458,24 +467,32 @@ export default function TransactionsScreen() {
                   onPress={() => { setTxMode(mode.key); setCategory(null); }}
                 >
                   <Text style={styles.modeIcon}>{mode.icon}</Text>
-                  <Text style={[styles.modeLabel, txMode === mode.key && { color: mode.color }]}>{mode.label}</Text>
+                  <Text style={[styles.modeLabel, txMode === mode.key && { color: mode.color }]}>{t(mode.key)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <Text style={[styles.modeHint, { color: activeModeConfig.color }]}>
-              {txMode === 'deposit' ? 'Money coming into an account' : txMode === 'withdrawal' ? 'Money spent from an account' : 'Move money between your accounts'}
+              {txMode === 'deposit' ? t('deposit_hint') : txMode === 'withdrawal' ? t('withdrawal_hint') : t('transfer_hint')}
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           
               {/* Date */}
-              <Text style={styles.modalLabel}>Date</Text>
-              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(v => !v)}>
-                <Text style={styles.dateText}>
-                  {date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.modalLabel}>{t('date')}</Text>
+              <View style={styles.dateRow}>
+                <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(v => !v)}>
+                  <Text style={styles.dateText}>
+                    {date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateTodayBtn}
+                  onPress={() => { setDate(new Date()); setShowDatePicker(false); }}
+                >
+                  <Text style={styles.dateTodayBtnText}>{t('today')}</Text>
+                </TouchableOpacity>
+              </View>
               {showDatePicker && (
                 <DateTimePicker
                   value={date}
@@ -505,10 +522,10 @@ export default function TransactionsScreen() {
               </View>
 
               {/* Description */}
-              <Text style={styles.modalLabel}>Description (optional)</Text>
+              <Text style={styles.modalLabel}>{t('description_optional')}</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder={txMode === 'deposit' ? 'e.g. Salary, Gift...' : txMode === 'withdrawal' ? 'e.g. Coffee, Rent...' : 'e.g. Savings transfer...'}
+                placeholder={txMode === 'deposit' ? t('description_placeholder_deposit') : txMode === 'withdrawal' ? t('description_placeholder_expense') : t('description_placeholder_transfer')}
                 placeholderTextColor="#bbb"
                 value={description}
                 onChangeText={setDescription}
@@ -556,7 +573,7 @@ export default function TransactionsScreen() {
               {/* ── Category picker ── */}
               {txMode !== 'transfer' && (
                 <>
-                  <Text style={styles.modalLabel}>Category (optional)</Text>
+                  <Text style={styles.modalLabel}>{t('category_optional')}</Text>
                   <View style={styles.categoryGrid}>
                     {allCategories.map(cat => (
                       <TouchableOpacity
@@ -581,13 +598,13 @@ export default function TransactionsScreen() {
                         onPress={() => setShowNewCategory(true)}
                       >
                         <Text style={styles.catChipIcon}>＋</Text>
-                        <Text style={styles.catChipNewText}>New</Text>
+                        <Text style={styles.catChipNewText}>{t('new_label')}</Text>
                       </TouchableOpacity>
                     ) : (
                       <View style={styles.newCatRow}>
                         <TextInput
                           style={styles.newCatInput}
-                          placeholder="Category name"
+                          placeholder={t('category_name_placeholder')}
                           placeholderTextColor="#bbb"
                           value={newCategoryName}
                           onChangeText={setNewCategoryName}
@@ -596,7 +613,7 @@ export default function TransactionsScreen() {
                           onSubmitEditing={handleAddCategory}
                         />
                         <TouchableOpacity style={styles.newCatConfirm} onPress={handleAddCategory}>
-                          <Text style={styles.newCatConfirmText}>Add</Text>
+                          <Text style={styles.newCatConfirmText}>{t('add_label')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.newCatCancel} onPress={() => { setShowNewCategory(false); setNewCategoryName(''); }}>
                           <Text style={styles.newCatCancelText}>✕</Text>
@@ -644,10 +661,13 @@ const styles = StyleSheet.create({
   addBtn: { backgroundColor: BRAND, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  monthRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  monthSide: { flex: 1, paddingLeft: 12 },
   monthArrow: { padding: 10 },
   monthArrowText: { fontSize: 26, color: BRAND, fontWeight: '300', lineHeight: 28 },
-  monthLabel: { fontSize: 17, fontWeight: '700', color: '#1a1a1a', minWidth: 160, textAlign: 'center' },
+  monthLabel: { fontSize: 17, fontWeight: '700', color: '#1a1a1a', minWidth: 140, textAlign: 'center' },
+  todayBtn: { paddingHorizontal: 7, paddingVertical: 6, borderRadius: 10, borderWidth: 1.5, borderColor: BRAND + '50' },
+  todayBtnText: { fontSize: 12, fontWeight: '700', color: BRAND },
 
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 40 },
@@ -773,6 +793,9 @@ const styles = StyleSheet.create({
   saveBtn: { flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  dateBtn: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+  dateBtn: { flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee' },
   dateText: { fontSize: 15, color: '#1a1a1a' },
+  dateTodayBtn: { backgroundColor: BRAND + '18', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1.5, borderColor: BRAND + '40' },
+  dateTodayBtnText: { fontSize: 13, fontWeight: '700', color: BRAND },
 });
