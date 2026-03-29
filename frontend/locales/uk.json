@@ -252,7 +252,7 @@
   "us_dollar": "Долар США",
   "euro_name": "Євро",
   "new_transactions_imported": "Нові транзакції імпортовано.",
-  "i_approved_sync": "Підтверджено — Синхронізувати",
+  "i_approved_sync": "Синхронізувати",
   "mono_connected_status": "Підключено · {{count}} рахунок(и) синхронізовано",
   "mono_not_connected_status": "Не підключено — підключіть рахунок нижче",
   "relink_confirm_msg": "У вас вже підключено {{count}} рахунок(и) Монобанк. Перепідключення замінить їх.",
