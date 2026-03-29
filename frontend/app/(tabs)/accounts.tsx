@@ -609,9 +609,9 @@ export default function AccountsScreen() {
 
             {/* Selected chips */}
             {selectedCurrencies.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectedChipScroll} contentContainerStyle={styles.selectedChipContent}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectedChipScroll} contentContainerStyle={styles.selectedChipContent} alwaysBounceVertical={false}>
                 {selectedCurrencies.map(cc => (
-                  <TouchableOpacity key={cc} style={styles.selectedChip} onPress={() => toggleCurrency(cc)}>
+                  <TouchableOpacity key={cc} style={[styles.selectedChip, { alignSelf: 'flex-start' }]} onPress={() => toggleCurrency(cc)}>
                     <Text style={styles.selectedChipFlag}>{CURRENCY_FLAGS[cc] ?? '🏳️'}</Text>
                     <Text style={styles.selectedChipText}>{cc}</Text>
                     <Text style={styles.selectedChipRemove}>✕</Text>
@@ -818,11 +818,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
     fontSize: 15, color: '#1a1a1a', marginBottom: 12,
   },
-  selectedChipScroll: { marginBottom: 12 },
-  selectedChipContent: { gap: 8 },
+  selectedChipScroll: { marginBottom: 12, flexGrow: 0 },
+  selectedChipContent: { gap: 6, alignItems: 'center', flexDirection: 'row' },
   selectedChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: BRAND + '15', borderRadius: 8, padding: 4,
+    backgroundColor: BRAND + '15', borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 4,
     borderWidth: 1, borderColor: BRAND + '30',
   },
   selectedChipFlag: { fontSize: 11 },

@@ -25,8 +25,11 @@ from src.routers.monobank import router as monobank_router
 from src.routers.receipts import router as receipts_router
 from src.routers.categories import router as categories_router
 
-# Create tables on startup (use Alembic for production migrations)
-Base.metadata.create_all(bind=engine)
+# Create any missing tables (idempotent). Errors are non-fatal on serverless.
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as _e:
+    logging.warning("create_all skipped: %s", _e)
 
 
 @asynccontextmanager
