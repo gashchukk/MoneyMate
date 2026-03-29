@@ -14,10 +14,11 @@ if not DATABASE_URL:
 # pool_pre_ping: test connection health before using it from pool
 engine = create_engine(
     DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=2,
+    max_overflow=5,
     pool_recycle=300,
     pool_pre_ping=True,
+    pool_timeout=10,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -68,7 +68,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "https://moneymate-production-ebfd.up.railway.app",
+      "apiUrl": "https://money-mate-neon-beta.vercel.app",
       "googleClientIdIos": "1044437157993-3q2s17fmbf2th1vob36sb9krpjujb7cs.apps.googleusercontent.com",
       "googleClientIdAndroid": "1044437157993-qtqt3o9nansbr9t1u3cf4dvahdd1bk9r.apps.googleusercontent.com",
       "googleClientIdWeb": "1044437157993-soq2bklhq1hu4rpuihlitq5iq8bq3bpi.apps.googleusercontent.com",
