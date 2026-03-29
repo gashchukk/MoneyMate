@@ -666,7 +666,7 @@ const styles = StyleSheet.create({
   monthArrow: { padding: 10 },
   monthArrowText: { fontSize: 26, color: BRAND, fontWeight: '300', lineHeight: 28 },
   monthLabel: { fontSize: 17, fontWeight: '700', color: '#1a1a1a', minWidth: 140, textAlign: 'center' },
-  todayBtn: { paddingHorizontal: 7, paddingVertical: 6, borderRadius: 10, borderWidth: 1.5, borderColor: BRAND + '50' },
+  todayBtn: { padding: 6, borderRadius: 10, borderWidth: 1.5, borderColor: BRAND + '50', alignSelf: 'flex-start' },
   todayBtnText: { fontSize: 12, fontWeight: '700', color: BRAND },
 
   scroll: { flex: 1 },

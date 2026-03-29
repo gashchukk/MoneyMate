@@ -822,12 +822,12 @@ const styles = StyleSheet.create({
   selectedChipContent: { gap: 8 },
   selectedChip: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: BRAND + '15', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3,
+    backgroundColor: BRAND + '15', borderRadius: 8, padding: 4,
     borderWidth: 1, borderColor: BRAND + '30',
   },
-  selectedChipFlag: { fontSize: 12 },
+  selectedChipFlag: { fontSize: 11 },
   selectedChipText: { fontSize: 12, fontWeight: '700', color: BRAND },
-  selectedChipRemove: { fontSize: 9, color: BRAND, marginLeft: 1, fontWeight: '700' },
+  selectedChipRemove: { fontSize: 9, color: BRAND, fontWeight: '700' },
   pickerList: { flex: 1 },
   pickerRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 13, gap: 12,

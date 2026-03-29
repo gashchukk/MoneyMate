@@ -18,15 +18,17 @@ from src.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER     = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM     = os.getenv("SMTP_FROM", SMTP_USER)
 RESET_CODE_TTL = 15 * 60  # 15 minutes
 
 
 def _send_reset_email(to_email: str, code: str) -> None:
+    gmail_user     = os.getenv("GMAIL_USER", "")
+    gmail_password = os.getenv("GMAIL_APP_PASSWORD", "")
+
+    if not gmail_user or not gmail_password:
+        logger.error("GMAIL_USER / GMAIL_APP_PASSWORD env vars are not set")
+        raise HTTPException(500, "Email service is not configured on the server.")
+
     body = (
         f"Your MoneyMate password reset code is:\n\n"
         f"  {code}\n\n"
@@ -34,16 +36,15 @@ def _send_reset_email(to_email: str, code: str) -> None:
     )
     msg = MIMEText(body)
     msg["Subject"] = "MoneyMate — Password Reset Code"
-    msg["From"]    = SMTP_FROM
+    msg["From"]    = f"MoneyMate <{gmail_user}>"
     msg["To"]      = to_email
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
-            smtp.starttls()
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(gmail_user, gmail_password)
             smtp.send_message(msg)
     except Exception as e:
         logger.error("Failed to send reset email to %s: %s", to_email, e)
-        raise HTTPException(500, "Failed to send reset email. Please try again later.")
+        raise HTTPException(500, f"Failed to send reset email: {e}")
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_WEB", "")
 
