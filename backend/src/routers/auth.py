@@ -1,9 +1,8 @@
 import os
 import time
 import random
-import smtplib
 import logging
-from email.mime.text import MIMEText
+import requests as http_requests
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from google.oauth2 import id_token as google_id_token
@@ -22,11 +21,9 @@ RESET_CODE_TTL = 15 * 60  # 15 minutes
 
 
 def _send_reset_email(to_email: str, code: str) -> None:
-    gmail_user     = os.getenv("GMAIL_USER", "")
-    gmail_password = os.getenv("GMAIL_APP_PASSWORD", "")
-
-    if not gmail_user or not gmail_password:
-        logger.error("GMAIL_USER / GMAIL_APP_PASSWORD env vars are not set")
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        logger.error("RESEND_API_KEY env var is not set")
         raise HTTPException(500, "Email service is not configured on the server.")
 
     body = (
@@ -34,14 +31,26 @@ def _send_reset_email(to_email: str, code: str) -> None:
         f"  {code}\n\n"
         f"This code expires in 15 minutes. If you did not request a reset, ignore this email."
     )
-    msg = MIMEText(body)
-    msg["Subject"] = "MoneyMate — Password Reset Code"
-    msg["From"]    = f"MoneyMate <{gmail_user}>"
-    msg["To"]      = to_email
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(gmail_user, gmail_password)
-            smtp.send_message(msg)
+        resp = http_requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": "MoneyMate <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": "MoneyMate — Password Reset Code",
+                "text": body,
+            },
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            logger.error("Resend error %s: %s", resp.status_code, resp.text)
+            raise HTTPException(500, f"Failed to send email: {resp.json().get('message', resp.text)}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to send reset email to %s: %s", to_email, e)
         raise HTTPException(500, f"Failed to send reset email: {e}")
