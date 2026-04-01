@@ -54,7 +54,7 @@ _MCC_CATEGORY_MAP: dict[int, str] = {
     4812: "Subscriptions", 4813: "Subscriptions",
     4814: "Subscriptions", 4815: "Subscriptions",
     4816: "Subscriptions", 4821: "Other",
-    4829: "Transfer",
+    4829: "Other",   # Money transfer – could be salary, P2P, etc; user sets Transfer manually
     4899: "Subscriptions",
     4900: "Housing",    # Utilities
     # ── Auto parts / industrial ───────────────────────────────────────────────
@@ -138,12 +138,15 @@ _MCC_CATEGORY_MAP: dict[int, str] = {
     6211: "Investment", 6236: "Investment",
     6300: "Other", 6381: "Other", 6399: "Other",
     6513: "Housing",    # Rental properties
-    6529: "Transfer", 6530: "Transfer",
-    6531: "Transfer", 6532: "Transfer", 6533: "Transfer",
-    6534: "Transfer", 6535: "Transfer", 6536: "Transfer",
-    6537: "Transfer", 6538: "Transfer", 6539: "Transfer",
-    6540: "Transfer",
-    6611: "Transfer", 6760: "Investment",
+    # 6529-6540 / 6611 are used by Monobank for card top-ups, P2P, salary, etc.
+    # Keeping them as Other so they show in analytics.
+    # Users can manually set Transfer only for true internal account moves.
+    6529: "Other", 6530: "Other",
+    6531: "Other", 6532: "Other", 6533: "Other",
+    6534: "Other", 6535: "Other", 6536: "Other",
+    6537: "Other", 6538: "Other", 6539: "Other",
+    6540: "Other",
+    6611: "Other", 6760: "Investment",
     # ── Hotels & accommodation (individual codes outside 3501-3838) ───────────
     7011: "Housing", 7012: "Housing",
     # ── Recreation / camping ──────────────────────────────────────────────────

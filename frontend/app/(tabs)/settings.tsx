@@ -440,9 +440,6 @@ export default function SettingsScreen() {
         <View style={[styles.modalCard, { alignItems: 'center', paddingBottom: 36 }]}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{t('qr_modal_title')}</Text>
-          <Text style={[styles.actionHint, { textAlign: 'center', marginBottom: 28, fontSize: 13 }]}>
-            {t('qr_modal_sub')}
-          </Text>
           {monoQrUrl && (
             <QRCode value={monoQrUrl} size={220} />
           )}

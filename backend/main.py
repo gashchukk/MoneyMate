@@ -32,6 +32,33 @@ try:
 except Exception as _e:
     logging.warning("create_all skipped: %s", _e)
 
+# ── One-time data fix: MCC-based "Transfer" → re-categorise via current mapping
+# Transactions auto-set to Transfer via the old MCC mapping (4829, 6529-6540,
+# 6611) may include salary, P2P, etc. Re-run mcc_to_category so they get the
+# correct canonical category. Transactions the user manually set to "Transfer"
+# have mcc=NULL or an MCC that still maps to "Other", so they are unaffected.
+try:
+    from src.database import SessionLocal
+    from src import models as _models
+    from src.mcc import mcc_to_category as _mcc_cat
+    _TRANSFER_MCCS = {4829, 6529, 6530, 6531, 6532, 6533, 6534,
+                      6535, 6536, 6537, 6538, 6539, 6540, 6611}
+    _db = SessionLocal()
+    try:
+        _rows = _db.query(_models.Transaction).filter(
+            _models.Transaction.category == "Transfer",
+            _models.Transaction.mcc.in_(list(_TRANSFER_MCCS)),
+        ).all()
+        for _tx in _rows:
+            _tx.category = _mcc_cat(_tx.mcc)
+        if _rows:
+            _db.commit()
+            logging.info("fix_transfer_mcc: re-categorised %d transaction(s)", len(_rows))
+    finally:
+        _db.close()
+except Exception as _e:
+    logging.warning("fix_transfer_mcc skipped: %s", _e)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

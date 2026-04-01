@@ -264,7 +264,6 @@
   "new_label": "New",
   "add_label": "Add",
   "qr_modal_title": "Scan QR with Monobank",
-  "qr_modal_sub": "Open Monobank → Settings → Security → Third-party access, then scan this code.",
   "opens_monobank_app": "Opens Monobank app to authorise access",
   "nbu_rates_prefix": "NBU rates",
   "forgot_password_hint": "Log in and go to Settings → Change Password to update your password.",
