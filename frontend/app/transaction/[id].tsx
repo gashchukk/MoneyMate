@@ -31,11 +31,12 @@ function getMccCategory(mcc: number | null, source: string) {
   return MCC_CATEGORIES.other;
 }
 
-function formatDateTime(time: number) {
+function formatDateTime(time: number, language: string) {
+  const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
   const d = new Date(time < 1e10 ? time * 1000 : time);
   return {
-    date: d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-    time: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    date: d.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+    time: d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }),
   };
 }
 
@@ -97,11 +98,11 @@ export default function TransactionDetailScreen() {
   const handleDelete = () => {
     Alert.alert(
       t('delete_transaction'),
-      'Are you sure? This cannot be undone.',
+      t('delete_confirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Delete', style: 'destructive',
+          text: t('delete'), style: 'destructive',
           onPress: async () => {
             setDeleting(true);
             try {
@@ -122,7 +123,7 @@ export default function TransactionDetailScreen() {
   const handleSave = async () => {
     const parsed = parseFloat(editAmount);
     if (isNaN(parsed) || parsed <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a positive number.');
+      Alert.alert(t('invalid_amount'), t('please_enter_positive_number'));
       return;
     }
     if (!tx) return;
@@ -158,9 +159,10 @@ export default function TransactionDetailScreen() {
   if (!tx) return null;
 
   const cat = getMccCategory(tx.mcc, tx.source);
-  const { date, time: timeStr } = formatDateTime(tx.time);
+  const { date, time: timeStr } = formatDateTime(tx.time, language);
   const isExpense = tx.amount < 0;
   const amountColor = isExpense ? '#c0392b' : '#27ae60';
+  const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
 
   return (
     <>
@@ -172,7 +174,7 @@ export default function TransactionDetailScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>{t('back')}</Text>
           </TouchableOpacity>
-          <Text style={styles.navTitle}>Transaction</Text>
+          <Text style={styles.navTitle}>{t('transaction')}</Text>
           <View style={{ width: 60 }} />
         </View>
 
@@ -193,8 +195,8 @@ export default function TransactionDetailScreen() {
         <View style={styles.card}>
           <DetailRow label={t('description')} value={tx.description || '—'} />
           <DetailRow label={t('date')} value={date} />
-          <DetailRow label="Time" value={timeStr} />
-          <DetailRow label="Account" value={account?.name ?? `Account #${tx.account_id}`} />
+          <DetailRow label={t('time')} value={timeStr} />
+          <DetailRow label={t('account')} value={account?.name ?? `Account #${tx.account_id}`} />
           <DetailRow label={t('currency')} value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
           <DetailRow label={t('category')} value={displayTxCategoryLabel(tx, language, t)} />
           <DetailRow label={t('source')} value={tx.source} capitalize />
@@ -205,7 +207,7 @@ export default function TransactionDetailScreen() {
         {tx.source === 'mono' && (
           <View style={styles.monoNote}>
             <Text style={styles.monoNoteText}>
-              ⚠️ This is a Monobank transaction. Edits may be overwritten on next sync.
+              ⚠️ {t('mono_edit_warning')}
             </Text>
           </View>
         )}
@@ -218,7 +220,7 @@ export default function TransactionDetailScreen() {
           <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={deleting}>
             {deleting
               ? <ActivityIndicator color="#c0392b" size="small" />
-              : <Text style={styles.deleteBtnText}>🗑  Delete</Text>
+              : <Text style={styles.deleteBtnText}>🗑  {t('delete')}</Text>
             }
           </TouchableOpacity>
         </View>
@@ -260,14 +262,14 @@ export default function TransactionDetailScreen() {
                 </Text>
               </View>
               <Text style={styles.signNote}>
-                {isExpense ? 'This is an expense — amount will be saved as negative.' : 'This is income — amount will be saved as positive.'}
+                {isExpense ? t('expense_sign_note') : t('income_sign_note')}
               </Text>
 
               {/* Date */}
               <Text style={styles.modalLabel}>{t('date')}</Text>
               <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditTimePicker(false); setShowEditDatePicker(v => !v); }}>
                 <Text style={styles.pickerBtnText}>
-                  {editDateTime.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {editDateTime.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
                 </Text>
               </TouchableOpacity>
               {showEditDatePicker && (
@@ -287,10 +289,10 @@ export default function TransactionDetailScreen() {
               )}
 
               {/* Time */}
-              <Text style={styles.modalLabel}>Time</Text>
+              <Text style={styles.modalLabel}>{t('time')}</Text>
               <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditDatePicker(false); setShowEditTimePicker(v => !v); }}>
                 <Text style={styles.pickerBtnText}>
-                  {editDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  {editDateTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </TouchableOpacity>
               {showEditTimePicker && (
@@ -310,7 +312,7 @@ export default function TransactionDetailScreen() {
               )}
 
               {/* Account */}
-              <Text style={styles.modalLabel}>Account</Text>
+              <Text style={styles.modalLabel}>{t('account')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                 {accounts.map(acc => (
                   <TouchableOpacity
@@ -407,7 +409,7 @@ export default function TransactionDetailScreen() {
                       setCustomCatInput('');
                     }}
                   >
-                    <Text style={styles.customCatConfirmText}>Add</Text>
+                    <Text style={styles.customCatConfirmText}>{t('add')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -454,7 +456,7 @@ const styles = StyleSheet.create({
     paddingTop: 56, paddingHorizontal: 20, paddingBottom: 12,
     backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
   },
-  backBtn: { width: 60 },
+  backBtn: { minWidth: 60, paddingRight: 8 },
   backText: { fontSize: 17, fontWeight: '600', color: BRAND },
   navTitle: { fontSize: 17, fontWeight: '700', color: '#1a1a1a' },
 

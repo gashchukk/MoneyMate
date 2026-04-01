@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 _data_path = os.path.join(os.path.dirname(__file__), "..", "data", "mcc.json")
 
@@ -246,3 +247,74 @@ def mcc_to_category(mcc: int | None) -> str:
     if 5811 <= mcc <= 5814: return "Food & Drink" # Restaurants, cafes, bars, fast food
 
     return _MCC_CATEGORY_MAP.get(mcc, "Other")
+
+
+# ── Description-based income classification ───────────────────────────────────
+# Monobank reuses the same transfer MCCs (6529-6540, 4829, 6611) for salary,
+# P2P, top-ups, freelance payments, etc.  Amount sign + description keywords
+# let us split these into meaningful income categories automatically.
+
+_TRANSFER_MCCS: frozenset[int] = frozenset({
+    4829, 6529, 6530, 6531, 6532, 6533, 6534,
+    6535, 6536, 6537, 6538, 6539, 6540, 6611,
+})
+
+_SALARY_RE = re.compile(
+    r'зарплат|зп\b|salary|оклад|виплат|нарахуван|payroll|wages',
+    re.IGNORECASE,
+)
+_FREELANCE_RE = re.compile(
+    r'freelance|фріланс|контракт\b|contract|invoice|послуг|service fee|upwork|fiverr',
+    re.IGNORECASE,
+)
+_BUSINESS_RE = re.compile(
+    r'\bфоп\b|\bfop\b|\bтов\b|\bлтд\b|\bltd\b|\bllc\b|\binc\b|gmbh|s\.r\.o|business|підприємець',
+    re.IGNORECASE,
+)
+_INVESTMENT_RE = re.compile(
+    r'дивіденд|dividend|відсотк|interest|купон|coupon|bond|облігац',
+    re.IGNORECASE,
+)
+_REFUND_RE = re.compile(
+    r'повернен|refund|cashback|кешбек|компенсац|chargeback|поверт',
+    re.IGNORECASE,
+)
+_GIFT_RE = re.compile(
+    r'\bподарун|\bgift\b|birthday|день народження',
+    re.IGNORECASE,
+)
+
+
+def smart_categorize(
+    mcc: int | None,
+    amount: float,
+    description: str | None,
+) -> str:
+    """
+    Categorize a transaction using MCC code, amount sign, and description text.
+
+    For transfer MCCs (salary, P2P, top-ups all share the same code) we cannot
+    rely on MCC alone.  We apply keyword matching on the description and use the
+    amount sign to tell income from expense.
+    """
+    desc = description or ""
+
+    # Non-transfer MCCs are unambiguous — delegate to the standard lookup.
+    if mcc is not None and mcc not in _TRANSFER_MCCS:
+        return mcc_to_category(mcc)
+
+    # ── Income transactions (positive amount) ────────────────────────────────
+    if amount > 0:
+        if _SALARY_RE.search(desc):     return "Salary"
+        if _BUSINESS_RE.search(desc):   return "Business"
+        if _FREELANCE_RE.search(desc):  return "Freelance"
+        if _INVESTMENT_RE.search(desc): return "Investment"
+        if _REFUND_RE.search(desc):     return "Refund"
+        if _GIFT_RE.search(desc):       return "Gift"
+        # Positive transfer with no recognisable keyword → leave as Other so
+        # the user can decide (salary from unknown employer, misc deposits, etc.)
+        return "Other"
+
+    # ── Expense / neutral transactions ───────────────────────────────────────
+    if _REFUND_RE.search(desc):         return "Refund"
+    return "Other"  # P2P send, top-up of another card, etc.

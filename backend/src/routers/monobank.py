@@ -8,7 +8,7 @@ import src.monobank as monobank
 import src.models as models
 from src.database import get_db
 from src.security import get_current_user
-from src.mcc import mcc_to_category
+from src.mcc import smart_categorize
 from src.rate_limit import limiter
 
 log = logging.getLogger(__name__)
@@ -136,7 +136,8 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
             continue
         tx_count = 0
         for tx in stmt_resp.json():
-            category = mcc_to_category(tx.get("mcc"))
+            amount = tx.get("amount", 0) / 100
+            category = smart_categorize(tx.get("mcc"), amount, tx.get("description"))
             existing_tx = db.query(models.Transaction).filter_by(external_tx_id=tx["id"]).first()
             if existing_tx:
                 continue
@@ -220,8 +221,8 @@ async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(
         log.warning("mono_corp_webhook: no tx id in statementItem")
         return {"status": "no tx id"}
 
-    category = mcc_to_category(item.get("mcc"))
     amount = item.get("amount", 0) / 100
+    category = smart_categorize(item.get("mcc"), amount, item.get("description"))
 
     for acc in accounts:
         existing = db.query(models.Transaction).filter_by(
@@ -338,7 +339,8 @@ def mono_sync_transactions(
             if existing:
                 continue
 
-            category = mcc_to_category(tx.get("mcc"))
+            tx_amount = tx["amount"] / 100
+            category = smart_categorize(tx.get("mcc"), tx_amount, tx.get("description"))
             db.add(models.Transaction(
                 user_id=user_id,
                 account_id=acc.id,
@@ -346,7 +348,7 @@ def mono_sync_transactions(
                 time=int(tx["time"]),
                 description=tx.get("description"),
                 mcc=tx.get("mcc"),
-                amount=tx["amount"] / 100,
+                amount=tx_amount,
                 currency_code=tx.get("currencyCode") or acc.currency_code,
                 source="mono",
                 category=category,

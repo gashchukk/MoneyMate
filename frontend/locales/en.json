@@ -294,5 +294,10 @@
   "password_reset_success": "Password reset! You can now log in.",
   "back_to_login": "Back to Login",
   "invalid_email": "Invalid email",
-  "please_enter_valid_email": "Please enter a valid email address."
+  "please_enter_valid_email": "Please enter a valid email address.",
+  "transaction": "Transaction",
+  "mono_edit_warning": "This is a Monobank transaction. Edits may be overwritten on next sync.",
+  "delete_confirm": "Are you sure? This cannot be undone.",
+  "expense_sign_note": "This is an expense — amount will be saved as negative.",
+  "income_sign_note": "This is income — amount will be saved as positive."
 }
