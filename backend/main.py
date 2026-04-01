@@ -24,6 +24,7 @@ from src.routers.transactions import router as transactions_router
 from src.routers.monobank import router as monobank_router
 from src.routers.receipts import router as receipts_router
 from src.routers.categories import router as categories_router
+from src.routers.mcc import router as mcc_router
 
 # Create any missing tables (idempotent). Errors are non-fatal on serverless.
 try:
@@ -81,6 +82,7 @@ app.include_router(transactions_router)
 app.include_router(monobank_router)
 app.include_router(receipts_router)
 app.include_router(categories_router)
+app.include_router(mcc_router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

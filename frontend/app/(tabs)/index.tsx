@@ -10,6 +10,7 @@ import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import { useTranslation } from 'react-i18next';
 import type { Transaction, Account } from '@/types';
+import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
 import {
   BRAND,
   DEFAULT_CATEGORIES,
@@ -29,6 +30,7 @@ function getCategoryMeta(cat?: string | null): { icon: string; color: string } {
   if (!cat) return { icon: '💳', color: '#bbb' };
   return CATEGORY_META[cat] ?? { icon: '🏷️', color: '#888' };
 }
+
 
 const mccColor = (mcc: number | null, category?: string | null): string => {
   const meta = getCategoryMeta(category);
@@ -433,7 +435,8 @@ export default function TransactionsScreen() {
                             <Text style={styles.txMetaDot}>·</Text>
                             <View style={[styles.catTag, { backgroundColor: catMeta.color + '22' }]}>
                               <Text style={[styles.catTagText, { color: catMeta.color }]}>
-                                {catMeta.icon} {tx.category}
+                                {catMeta.icon}{' '}
+                                {displayTxCategoryLabel(tx, language, t)}
                               </Text>
                             </View>
                           </>
@@ -586,7 +589,7 @@ export default function TransactionsScreen() {
                       >
                         <Text style={styles.catChipIcon}>{cat.icon}</Text>
                         <Text style={[styles.catChipText, category === cat.label && { color: '#fff' }]}>
-                          {cat.label}
+                          {displayCategoryLabel(cat.label, t)}
                         </Text>
                       </TouchableOpacity>
                     ))}

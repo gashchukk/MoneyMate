@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 from typing import Optional, Any
+from src.mcc import mcc_short_description
 
 # ---------- USER ----------
 
@@ -75,8 +76,18 @@ class Transaction(BaseModel):
     source: str
     category: Optional[str] = None
     created_at: int
+    mcc_label_en: Optional[str] = None
+    mcc_label_uk: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _fill_mcc_labels(self):
+        if self.mcc:
+            sd = mcc_short_description(self.mcc)
+            self.mcc_label_en = sd.get("en") or None
+            self.mcc_label_uk = sd.get("uk") or None
+        return self
 
 
 class TransactionCreate(BaseModel):
@@ -112,8 +123,18 @@ class TransactionResponse(BaseModel):
     source: str
     category: Optional[str] = None
     created_at: int
+    mcc_label_en: Optional[str] = None
+    mcc_label_uk: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _fill_mcc_labels(self):
+        if self.mcc:
+            sd = mcc_short_description(self.mcc)
+            self.mcc_label_en = sd.get("en") or None
+            self.mcc_label_uk = sd.get("uk") or None
+        return self
 
 
 # ---------- CATEGORY ----------

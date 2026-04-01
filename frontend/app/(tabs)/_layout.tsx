@@ -10,6 +10,7 @@ function TabsWithContext() {
 
   return (
     <Tabs
+      key={language}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: BRAND,

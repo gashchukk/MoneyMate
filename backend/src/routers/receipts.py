@@ -75,6 +75,7 @@ async def scan_receipt(
 
     parsed = parse_receipt(raw_text)
     total = parsed.get("total")
+    category = parsed.get("category_en") or parsed.get("category") or "Groceries"
 
     tx_id = None
     if total and total > 0:
@@ -88,7 +89,7 @@ async def scan_receipt(
             amount=-total,
             currency_code=parsed.get("currency_code", account.currency_code),
             source="receipt",
-            category=parsed.get("category", "Groceries"),
+            category=category,
             created_at=int(time.time()),
         )
         db.add(tx)

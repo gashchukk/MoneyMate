@@ -11,6 +11,8 @@ export interface Transaction {
   source: string;
   category?: string | null;
   created_at: number;
+  mcc_label_en?: string | null;
+  mcc_label_uk?: string | null;
 }
 
 export interface Account {

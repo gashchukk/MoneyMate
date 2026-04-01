@@ -10,6 +10,7 @@ import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, CATEGORY_COLORS, currencySymbol } from '@/constants/brand';
+import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
 
 type Period = '7d' | '30d' | '3m' | '6m' | '1y' | 'all';
 type MainTab = 'spendings' | 'income';
@@ -86,7 +87,7 @@ const chartStyles = StyleSheet.create({
 });
 
 // ── Category Pie Chart ─────────────────────────────────────────────────────────
-type Slice = { label: string; value: number; color: string; pct: number };
+type Slice = { key: string; label: string; value: number; color: string; pct: number };
 
 // ── SVG Donut Chart ───────────────────────────────────────────────────────────
 function polar(cx: number, cy: number, r: number, deg: number) {
@@ -117,7 +118,7 @@ function DonutChart({ slices, size, accentColor, total, sym, selected, onPress }
           const end = cursor + sweep - GAP / 2;
           cursor += sweep;
 
-          const isActive = active?.label === s.label;
+          const isActive = active?.key === s.key;
           const outerR = isActive ? R + 5 : R;
           const innerR = isActive ? r - 2 : r;
 
@@ -186,7 +187,7 @@ function CategoryPieChart({ slices, total, sym, accentColor }: {
   const [selected, setSelected] = useState<Slice | null>(null);
   const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
 
-  const handlePress = (s: Slice) => setSelected(prev => prev?.label === s.label ? null : s);
+  const handlePress = (s: Slice) => setSelected(prev => prev?.key === s.key ? null : s);
 
   if (slices.length === 0 || total === 0) {
     return (
@@ -246,7 +247,7 @@ export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>('30d');
   const [mainTab, setMainTab] = useState<MainTab>('spendings');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
 
   // ── Date range navigator ──────────────────────────────────────────────────
   const [rangeMode, setRangeMode] = useState<RangeMode>('monthly');
@@ -346,7 +347,7 @@ export default function AnalyticsScreen() {
     const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({ label, value, color: getCatColor(label, i), pct: (value / total) * 100 }));
+      .map(([key, value], i) => ({ key, label: displayCategoryLabel(key, t), value, color: getCatColor(key, i), pct: (value / total) * 100 }));
   }, [expenses]);
 
   // ── Income category slices ─────────────────────────────────────────────────
@@ -359,7 +360,7 @@ export default function AnalyticsScreen() {
     const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
-      .map(([label, value], i) => ({ label, value, color: getCatColor(label, i), pct: (value / total) * 100 }));
+      .map(([key, value], i) => ({ key, label: displayCategoryLabel(key, t), value, color: getCatColor(key, i), pct: (value / total) * 100 }));
   }, [income]);
 
   // ── Monthly trend (last 6 months, always from all transactions) ───────────
@@ -386,10 +387,10 @@ export default function AnalyticsScreen() {
 
   // ── Category-drilled transactions ─────────────────────────────────────────
   const catDrilledTxs = useMemo(() => {
-    if (!selectedCategory) return [];
+    if (!selectedCategoryKey) return [];
     const pool = mainTab === 'spendings' ? expenses : income;
-    return pool.filter(tx => (tx.category ?? 'Other') === selectedCategory);
-  }, [selectedCategory, expenses, income, mainTab]);
+    return pool.filter(tx => (tx.category ?? 'Other') === selectedCategoryKey);
+  }, [selectedCategoryKey, expenses, income, mainTab]);
 
   const sym = currencySymbol(980);
 
@@ -474,7 +475,7 @@ export default function AnalyticsScreen() {
       <View style={styles.mainTabs}>
         <TouchableOpacity
           style={[styles.mainTab, mainTab === 'spendings' && styles.mainTabActiveSpend]}
-          onPress={() => { setMainTab('spendings'); setSelectedCategory(null); }}
+          onPress={() => { setMainTab('spendings'); setSelectedCategoryKey(null); }}
         >
           <Text style={[styles.mainTabText, mainTab === 'spendings' && styles.mainTabTextActiveSpend]}>
             ⬆️  {t('spendings')}
@@ -486,7 +487,7 @@ export default function AnalyticsScreen() {
 
         <TouchableOpacity
           style={[styles.mainTab, mainTab === 'income' && styles.mainTabActiveIncome]}
-          onPress={() => { setMainTab('income'); setSelectedCategory(null); }}
+          onPress={() => { setMainTab('income'); setSelectedCategoryKey(null); }}
         >
           <Text style={[styles.mainTabText, mainTab === 'income' && styles.mainTabTextActiveIncome]}>
             ⬇️  {t('income')}
@@ -511,7 +512,7 @@ export default function AnalyticsScreen() {
             <StatRow label={t('largest_expense')}   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>{t('top_category_label')}</Text>
-              <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].label, 0) : '#aaa' }]}>
+              <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].key, 0) : '#aaa' }]}>
                 {categorySlices[0]?.label ?? '—'}
               </Text>
             </View>
@@ -531,17 +532,17 @@ export default function AnalyticsScreen() {
                 <TouchableOpacity
                   key={`cat-${i}`}
                   style={styles.catRow}
-                  onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
+                  onPress={() => setSelectedCategoryKey(selectedCategoryKey === cat.key ? null : cat.key)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.catDot, { backgroundColor: cat.color }]} />
                   <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
                   <Text style={styles.catPct}>{cat.pct.toFixed(1)}%</Text>
                   <Text style={[styles.catAmount, { color: cat.color }]}>{sym}{cat.value.toFixed(0)}</Text>
-                  <Text style={styles.catArrow}>{selectedCategory === cat.label ? '▲' : '▼'}</Text>
+                  <Text style={styles.catArrow}>{selectedCategoryKey === cat.key ? '▲' : '▼'}</Text>
                 </TouchableOpacity>,
 
-                selectedCategory === cat.label && catDrilledTxs.length > 0 && (
+                selectedCategoryKey === cat.key && catDrilledTxs.length > 0 && (
                   <View key={`drill-${i}`} style={styles.drillBox}>
                     {catDrilledTxs.slice(0, 8).map((tx, idx) => (
                       <TouchableOpacity key={tx.id} style={[styles.drillRow, idx < Math.min(catDrilledTxs.length, 8) - 1 && styles.drillBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
@@ -573,7 +574,7 @@ export default function AnalyticsScreen() {
                 <Text style={styles.topRank}>#{i + 1}</Text>
                 <View style={styles.topMid}>
                   <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
-                  <Text style={styles.topMeta}>{tx.category ?? tx.source}</Text>
+                  <Text style={styles.topMeta}>{displayTxCategoryLabel(tx, language, t) || tx.source}</Text>
                 </View>
                 <Text style={[styles.topAmount, { color: '#c0392b' }]}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
               </TouchableOpacity>
@@ -634,7 +635,7 @@ export default function AnalyticsScreen() {
             <StatRow label={t('largest_income')}    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>{t('top_category_label')}</Text>
-              <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].label, 0) : '#aaa' }]}>
+              <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].key, 0) : '#aaa' }]}>
                 {incomeSlices[0]?.label ?? '—'}
               </Text>
             </View>
@@ -654,17 +655,17 @@ export default function AnalyticsScreen() {
                 <TouchableOpacity
                   key={`cat-${i}`}
                   style={styles.catRow}
-                  onPress={() => setSelectedCategory(selectedCategory === cat.label ? null : cat.label)}
+                  onPress={() => setSelectedCategoryKey(selectedCategoryKey === cat.key ? null : cat.key)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.catDot, { backgroundColor: cat.color }]} />
                   <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
                   <Text style={styles.catPct}>{cat.pct.toFixed(1)}%</Text>
                   <Text style={[styles.catAmount, { color: cat.color }]}>{sym}{cat.value.toFixed(0)}</Text>
-                  <Text style={styles.catArrow}>{selectedCategory === cat.label ? '▲' : '▼'}</Text>
+                  <Text style={styles.catArrow}>{selectedCategoryKey === cat.key ? '▲' : '▼'}</Text>
                 </TouchableOpacity>,
 
-                selectedCategory === cat.label && catDrilledTxs.length > 0 && (
+                selectedCategoryKey === cat.key && catDrilledTxs.length > 0 && (
                   <View key={`drill-${i}`} style={styles.drillBox}>
                     {catDrilledTxs.slice(0, 8).map((tx, idx) => (
                       <TouchableOpacity key={tx.id} style={[styles.drillRow, idx < Math.min(catDrilledTxs.length, 8) - 1 && styles.drillBorder]} onPress={() => router.push(`/transaction/${tx.id}` as any)} activeOpacity={0.7}>
@@ -696,7 +697,7 @@ export default function AnalyticsScreen() {
                 <Text style={styles.topRank}>#{i + 1}</Text>
                 <View style={styles.topMid}>
                   <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
-                  <Text style={styles.topMeta}>{tx.category ?? tx.source}</Text>
+                  <Text style={styles.topMeta}>{displayTxCategoryLabel(tx, language, t) || tx.source}</Text>
                 </View>
                 <Text style={[styles.topAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
               </TouchableOpacity>

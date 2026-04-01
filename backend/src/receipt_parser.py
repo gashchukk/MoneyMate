@@ -20,15 +20,21 @@ Return ONLY a valid JSON object with NO markdown, NO explanation, NO code fences
 
 Required fields:
 {
-  "store":         string or null,        // store/merchant name
+  "store":         string or null,        // store/merchant name (original from receipt)
+  "store_en":      string or null,        // store/merchant in English (translate if needed)
+  "store_uk":      string or null,        // store/merchant in Ukrainian (translate if needed)
   "date":          string or null,        // date in DD.MM.YYYY format
   "time":          integer or null,       // unix timestamp (seconds). Derive from date + time on receipt. If no time found, use noon (12:00) of that date. If no date at all, return null.
   "total":         float or null,         // final total amount paid (after discounts)
   "currency":      string,                // "UAH", "USD", "EUR", etc. Default "UAH" for Ukrainian receipts.
   "currency_code": integer,               // ISO 4217 numeric: UAH=980, USD=840, EUR=978
-  "description":   string,               // short human-readable description, e.g. "Silpo — 12 items"
+  "description":   string,               // short human-readable description (original)
+  "description_en": string or null,       // English description
+  "description_uk": string or null,       // Ukrainian description
   "mcc":           integer,              // best-guess MCC code based on store type. Grocery=5411, Restaurant=5812, Pharmacy=5912, Fuel=5541, Clothing=5691, Electronics=5732, Transport=4111. Default 5411.
-  "category":      string,               // one of: "Groceries", "Food & Drink", "Health", "Transport", "Shopping", "Entertainment", "Housing", "Other"
+  "category":      string,               // canonical category (English), one of: "Groceries", "Food & Drink", "Health", "Transport", "Shopping", "Entertainment", "Housing", "Other"
+  "category_en":   string,               // same as category (English)
+  "category_uk":   string,               // Ukrainian category label
   "items": [                             // individual line items, empty array if none found
     {
       "name":        string,
@@ -46,6 +52,7 @@ Rules:
 - If you see ЗНИЖКА/DISCOUNT lines, subtract from subtotal to get total
 - For mcc: use context clues (store name, item names) to pick the best code
 - For category: match to the closest option from the allowed list
+- Also return category_uk translation of that category label
 - Parse Ukrainian (Cyrillic) text correctly
 - Strip trailing/leading whitespace from all strings
 - Return null for any field you cannot confidently determine, If you are not sure about any field, return null for that field
@@ -90,6 +97,7 @@ def parse_receipt(raw_text: str) -> dict:
     parsed.setdefault("currency_code", 980)
     parsed.setdefault("mcc", 5411)
     parsed.setdefault("category", "Groceries")
+    parsed.setdefault("category_en", parsed.get("category"))
     parsed.setdefault("items", [])
     parsed.setdefault("raw_lines", [l.strip() for l in raw_text.splitlines() if l.strip()])
 

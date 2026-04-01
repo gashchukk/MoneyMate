@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, currencySymbol, CURRENCY_NAMES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, CATEGORY_COLORS } from '@/constants/brand';
+import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
 
 const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   grocery:    { label: 'Groceries',   icon: '🛒', color: '#27ae60', bg: '#e8f5e9' },
@@ -182,7 +183,9 @@ export default function TransactionDetailScreen() {
             {isExpense ? '−' : '+'}{currencySymbol(tx.currency_code)}{Math.abs(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           <View style={[styles.catBadge, { backgroundColor: cat.color + '20' }]}>
-            <Text style={[styles.catBadgeText, { color: cat.color }]}>{cat.label}</Text>
+            <Text style={[styles.catBadgeText, { color: cat.color }]}>
+              {displayTxCategoryLabel(tx, language, t)}
+            </Text>
           </View>
         </View>
 
@@ -193,7 +196,7 @@ export default function TransactionDetailScreen() {
           <DetailRow label="Time" value={timeStr} />
           <DetailRow label="Account" value={account?.name ?? `Account #${tx.account_id}`} />
           <DetailRow label={t('currency')} value={CURRENCY_NAMES[tx.currency_code] ?? String(tx.currency_code)} />
-          <DetailRow label={t('category')} value={tx.category ?? cat.label} />
+          <DetailRow label={t('category')} value={displayTxCategoryLabel(tx, language, t)} />
           <DetailRow label={t('source')} value={tx.source} capitalize />
           {tx.mcc != null && tx.mcc > 0 && <DetailRow label={t('mcc_code')} value={String(tx.mcc)} last />}
         </View>
@@ -351,7 +354,9 @@ export default function TransactionDetailScreen() {
                       onPress={() => setEditCategory(active ? null : c.label)}
                     >
                       <Text style={styles.categoryChipIcon}>{c.icon}</Text>
-                      <Text style={[styles.categoryChipText, active && { color: '#fff' }]}>{c.label}</Text>
+                      <Text style={[styles.categoryChipText, active && { color: '#fff' }]}>
+                        {displayCategoryLabel(c.label, t)}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}

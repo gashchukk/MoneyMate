@@ -12,6 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -504,7 +505,7 @@ export default function ScanScreen() {
                     <Text style={styles.dupTxMeta}>
                       {new Date(duplicateTx.time < 1e10 ? duplicateTx.time * 1000 : duplicateTx.time)
                         .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {duplicateTx.category ? `  ·  ${duplicateTx.category}` : ''}
+                      {duplicateTx.category ? `  ·  ${displayTxCategoryLabel(duplicateTx, language, t)}` : ''}
                     </Text>
                   </View>
                 </View>
