@@ -137,22 +137,6 @@ class TransactionResponse(BaseModel):
         return self
 
 
-# ---------- CATEGORY ----------
-
-class CategoryCreate(BaseModel):
-    label: str
-    icon: str = "🏷️"
-    color: str = "#888"
-
-
-class CategoryResponse(BaseModel):
-    id: int
-    label: str
-    icon: str
-    color: str
-
-    model_config = {"from_attributes": True}
-
 
 # ---------- GOOGLE AUTH ----------
 

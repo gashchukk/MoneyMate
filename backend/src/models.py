@@ -48,15 +48,6 @@ class Transaction(Base):
     )
 
 
-class UserCategory(Base):
-    __tablename__ = "user_categories"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    label = Column(String, nullable=False)
-    icon = Column(String, nullable=False, default="🏷️")
-    color = Column(String, nullable=False, default="#888")
-
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"

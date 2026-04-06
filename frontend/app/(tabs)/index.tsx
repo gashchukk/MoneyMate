@@ -105,13 +105,13 @@ export default function TransactionsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Custom category creation
+  // Custom category creation (local session only — no backend persistence)
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [customCategories, setCustomCategories] = useState<{ id: number; label: string; icon: string; color: string }[]>([]);
+  const [localCategories, setLocalCategories] = useState<{ label: string; icon: string; color: string }[]>([]);
 
   const defaultCategories = txMode === 'deposit' ? DEFAULT_INCOME_CATEGORIES : DEFAULT_EXPENSE_CATEGORIES;
-  const allCategories = [...defaultCategories, ...customCategories];
+  const allCategories = [...defaultCategories, ...localCategories];
 
   const resetForm = () => {
     setDescription('');
@@ -173,14 +173,12 @@ export default function TransactionsScreen() {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
-      const [txs, accs, cats] = await Promise.all([
+      const [txs, accs] = await Promise.all([
         apiFetch('/transactions'),
         apiFetch('/accounts'),
-        apiFetch('/categories'),
       ]);
       setTransactions(txs);
       setAccounts(accs);
-      setCustomCategories(cats);
       detectPotentialTransfers(txs);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
@@ -193,25 +191,16 @@ export default function TransactionsScreen() {
 
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
-  // ── Add custom category ────────────────────────────────────────────────────
-  const handleAddCategory = async () => {
+  // ── Add custom category (local, session-only) ─────────────────────────────
+  const handleAddCategory = () => {
     const name = newCategoryName.trim();
     if (!name) return;
     if (allCategories.find(c => c.label.toLowerCase() === name.toLowerCase())) {
       Alert.alert(t('already_exists'), t('category_already_exists'));
       return;
     }
-    try {
-      const saved = await apiFetch('/categories', {
-        method: 'POST',
-        body: JSON.stringify({ label: name, icon: '🏷️', color: '#888' }),
-      });
-      setCustomCategories(prev => [...prev, saved]);
-      setCategory(name);
-    } catch (e: any) {
-      if (e instanceof SessionExpiredError) return;
-      Alert.alert(t('error'), e.message);
-    }
+    setLocalCategories(prev => [...prev, { label: name, icon: '🏷️', color: '#888' }]);
+    setCategory(name);
     setNewCategoryName('');
     setShowNewCategory(false);
   };
