@@ -13,7 +13,7 @@
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [Architecture](#2-architecture)
+2. [Architecture](#2-architecture) — includes [technologies reference](#24-technologies-reference) and [algorithms and business logic](#25-algorithms-and-business-logic)
 3. [Database Schema](#3-database-schema)
 4. [API Reference](#4-api-reference)
 5. [Setup & Installation](#5-setup--installation)
@@ -46,8 +46,9 @@ MoneyMate is a full-stack personal finance management application built for Ukra
 | OCR | Google Cloud Vision | Receipt text extraction |
 | AI Parser | Google Gemini 2.0 Flash | Structured data extraction from OCR text |
 | Banking | Monobank Open API | Account & transaction sync |
-| Auth | JWT (python-jose) | Secure token-based authentication |
+| Auth | PyJWT (HS256) + bcrypt | Access/refresh tokens; password hashing |
 | Storage | Expo SecureStore | Token storage on device |
+| Rate limiting | slowapi | Protects auth, receipt scan, Mono endpoints |
 
 ---
 
@@ -58,43 +59,112 @@ MoneyMate is a full-stack personal finance management application built for Ukra
 ```
 moneymate/
 ├── backend/
-│   ├── main.py                 # FastAPI app, all endpoints
-│   ├── models.py               # SQLAlchemy ORM models
-│   ├── schemas.py              # Pydantic request/response schemas
-│   ├── database.py             # DB engine + session factory
-│   ├── auth.py                 # JWT helpers (create/verify token)
-│   ├── monobank.py             # Monobank API client wrapper
-│   ├── receipt_parser.py       # Gemini-powered receipt parser
-│   ├── mcc_mappings.json       # MCC code → category name mapping
-│   └── requirements.txt
-└── mobile/
+│   ├── main.py                 # FastAPI app entry, lifespan, middleware
+│   ├── vercel.json             # Vercel serverless routing
+│   ├── requirements.txt
+│   ├── data/
+│   │   └── mcc.json            # MCC metadata (descriptions); category rules in src/mcc.py
+│   └── src/
+│       ├── database.py         # Engine + session
+│       ├── models.py           # SQLAlchemy ORM models
+│       ├── schemas.py          # Pydantic request/response schemas
+│       ├── auth.py             # bcrypt password hash/verify
+│       ├── security.py         # JWT create/decode, get_current_user
+│       ├── monobank.py         # Monobank API client (ECDSA-signed requests)
+│       ├── receipt_parser.py  # Gemini receipt JSON extraction
+│       ├── mcc.py              # MCC → category + smart_categorize heuristics
+│       ├── rate_limit.py       # slowapi limiter
+│       └── routers/            # auth, accounts, transactions, mono, receipts, mcc
+└── frontend/
     ├── app/
-    │   ├── (tabs)/
-    │   │   ├── index.tsx        # Transactions screen
-    │   │   ├── analytics.tsx    # Analytics dashboard
-    │   │   ├── scan.tsx         # Receipt scanner
-    │   │   ├── accounts.tsx     # Accounts list
-    │   │   └── settings.tsx     # Settings + Mono link/sync
-    │   ├── account/[id].tsx     # Account detail + edit/delete
-    │   ├── transaction/[id].tsx # Transaction detail + edit/delete
-    │   └── auth.tsx             # Login / Register
+    │   ├── (tabs)/             # index, analytics, scan, accounts, settings
+    │   ├── account/[id].tsx
+    │   ├── transaction/[id].tsx
+    │   └── auth.tsx
     ├── components/
-    │   ├── AppContext.tsx        # Global state (language, currency)
-    │   ├── CreateAccountModal.tsx
-    │   └── EditAccountModal.tsx
     └── constants/
-        └── api.ts               # Base URL + apiFetch helper
+        └── api.ts              # apiFetch + SecureStore + token refresh
 ```
 
 ### 2.2 Data Flow
 
 ```
-Mobile App  ──►  REST API (FastAPI)  ──►  PostgreSQL
+Expo app  ──►  REST API (FastAPI)  ──►  PostgreSQL
 
-Receipt Photo  ──►  Google Vision OCR  ──►  Gemini LLM  ──►  Transaction + ReceiptImage rows
+Receipt photo  ──►  Google Vision OCR  ──►  Gemini LLM  ──►  Transaction + ReceiptImage rows
 
-Monobank Approval  ──►  /mono/sync-accounts  ──►  /mono/sync-transactions  ──►  DB upsert
+Monobank approval / webhooks  ──►  client-info + statements  ──►  accounts + transactions (dedup by external_tx_id)
 ```
+
+### 2.3 Architecture diagram
+
+```mermaid
+flowchart LR
+  subgraph client [Expo_RN_app]
+    SecureStore[expo_secure_store]
+    ApiFetch[apiFetch_JWT_refresh]
+  end
+  subgraph api [FastAPI_backend]
+    Auth[JWT_bcrypt]
+    Mono[Monobank_ECDSA_requests]
+    Receipts[Vision_OCR_Gemini]
+    MCC[mcc_to_category_smart_categorize]
+  end
+  subgraph external [External_services]
+    PG[(PostgreSQL)]
+    Vision[Google_Cloud_Vision]
+    Gemini[Google_Gemini]
+    MonoAPI[Monobank_API]
+  end
+  client --> api
+  api --> PG
+  Receipts --> Vision
+  Receipts --> Gemini
+  Mono --> MonoAPI
+```
+
+### 2.4 Technologies reference
+
+| Technology / pattern | Why | Where |
+|---|---|---|
+| Expo, React Native, React 19 | Cross-platform mobile (iOS/Android; web via Expo) | `frontend/package.json` |
+| Expo Router | File-based routing, tabs, auth flow | `frontend/app/` |
+| TypeScript | Typed UI and API layer | `frontend/` |
+| i18next, react-i18next | English / Ukrainian UI | `frontend/` |
+| expo-secure-store | Store secrets off generic storage | `frontend/constants/api.ts` |
+| `apiFetch` + refresh on 401 | Session continuity; logout on invalid refresh | `frontend/constants/api.ts` |
+| expo-camera, expo-image-picker | Receipt capture / gallery | `frontend/package.json`, scan screen |
+| react-native-gifted-charts, SVG | Analytics charts | `frontend/app/(tabs)/analytics.tsx` |
+| Reanimated, gesture-handler, worklets | Animations and gestures | `frontend/package.json` |
+| `useMemo`, filter/reduce/sort | Client-side analytics without extra API | `frontend/app/(tabs)/analytics.tsx`, `index.tsx` |
+| FastAPI, Uvicorn | REST API + ASGI server | `backend/main.py`, `backend/requirements.txt` |
+| SQLAlchemy, psycopg2, PostgreSQL | ORM and database | `backend/src/database.py`, `models.py` |
+| Pydantic | Request/response validation | `backend/src/schemas.py` |
+| PyJWT | Access and typed refresh tokens | `backend/src/security.py` |
+| bcrypt | Password hashing | `backend/src/auth.py` |
+| slowapi | Rate limits on sensitive routes | `backend/main.py`, `src/routers/` |
+| python-multipart | Image uploads | `backend/src/routers/receipts.py` |
+| requests | HTTP calls to Monobank | `backend/src/monobank.py` |
+| ecdsa + SHA256 | Monobank `X-Sign` request signing | `backend/src/monobank.py` |
+| google-cloud-vision, google-auth | OCR (`text_detection`) | `backend/src/routers/receipts.py` |
+| google-genai | Gemini structured receipt parsing | `backend/src/receipt_parser.py` |
+| python-dotenv | Local configuration | `backend/main.py` |
+| Vercel `@vercel/python` | Optional deployment | `backend/vercel.json` |
+| Railway | Optional deployment | `backend/railway.json`, `Procfile` |
+
+### 2.5 Algorithms and business logic
+
+| Logic | Why | Where |
+|---|---|---|
+| `mcc_to_category` — range checks + dict lookup | Map bank MCC codes to app categories in O(1)-style fashion | `backend/src/mcc.py`, data `backend/data/mcc.json` |
+| `smart_categorize` — amount sign + regex keywords | Disambiguate Monobank “transfer” MCCs (salary vs P2P, etc.) | `backend/src/mcc.py`; used in `src/routers/monobank.py` |
+| Gemini prompt + JSON cleanup + multi-format date parse | Turn noisy OCR text into a strict transaction-shaped object | `backend/src/receipt_parser.py` |
+| Skip insert if `external_tx_id` exists | Idempotent sync and webhooks | `backend/src/routers/monobank.py` |
+| Stored `account.balance` updated on every tx write | Fast balance reads; documented consistency rules | [Balance consistency rule](#31-balance-consistency-rule); receipt and transaction routers |
+| Analytics time windows (month/year/custom/week) | Period filters for charts | `frontend/app/(tabs)/analytics.tsx` |
+| Category aggregation: map → sum → sort desc | Pie slices and “top” lists | `frontend/app/(tabs)/analytics.tsx` |
+| Group transactions by calendar day, sort by time | Feed ordering | `frontend/app/(tabs)/index.tsx`, `account/[id].tsx` |
+| Timestamp `* 1000` when `time < 1e10` | Treat values as seconds vs milliseconds safely | `frontend/app/(tabs)/analytics.tsx` (and similar) |
 
 ---
 
@@ -179,14 +249,16 @@ Monobank Approval  ──►  /mono/sync-accounts  ──►  /mono/sync-transac
 
 ## 4. API Reference
 
-All endpoints except `/auth/*` require `Authorization: Bearer <token>` header.
+All endpoints except public auth routes (`/signup`, `/login`, `/refresh`, password reset, `/auth/google`, etc.) require `Authorization: Bearer <token>`.
 
 ### Authentication
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/auth/register` | Create new user account |
-| `POST` | `/auth/login` | Login, receive JWT access token |
+| `POST` | `/signup` | Create new user account |
+| `POST` | `/login` | Login; returns access + refresh tokens |
+| `POST` | `/refresh` | Exchange refresh token for new token pair |
+| `POST` | `/auth/google` | Sign in with Google (ID token) |
 
 ### Accounts
 
@@ -237,11 +309,15 @@ Create a `.env` file in `backend/`:
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/moneymate
 SECRET_KEY=your-jwt-secret-key
-ALGORITHM=hashing-alogrithm #ex.: "HS256"
+ALGORITHM=HS256
 GOOGLE_API_KEY=your-gemini-api-key
-GENAI_MODEL=your-gemini-model
-MONOBANK_KEY_ID=your-monobank-access-token
+GENAI_MODEL=gemini-2.0-flash-lite
+MONOBANK_KEY_ID=your-monobank-key-id
+# Monobank: PEM private key as env (use \n for newlines) or MONOBANK_PRIVATE_KEY_PATH
+MONOBANK_PRIVATE_KEY="-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----\n"
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Optional (e.g. Vercel): JSON string for Vision — see src/routers/receipts.py
+# GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account",...}
 ```
 
 #### Install and run
@@ -249,38 +325,25 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```bash
 cd backend
 pip install -r requirements.txt
-alembic upgrade head          # run all migrations
+# Schema: main.py runs SQLAlchemy create_all on startup (no Alembic in this repo)
 uvicorn main:app --reload     # dev server on :8000
 ```
 
 #### `requirements.txt` (key packages)
 
-```
-fastapi
-uvicorn
-sqlalchemy
-psycopg2-binary
-python-jose[cryptography]
-passlib[bcrypt]
-google-cloud-vision>=3.4.0
-google-generativeai>=0.7.0
-python-multipart
-alembic
-python-dotenv
-```
+See [`backend/requirements.txt`](backend/requirements.txt). Notable entries: `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `pydantic`, `PyJWT`, `bcrypt`, `requests`, `ecdsa`, `google-cloud-vision`, `google-genai`, `google-auth`, `python-multipart`, `slowapi`, `python-dotenv`.
 
 ---
 
-### 5.2 Mobile App
+### 5.2 Frontend (Expo app)
 
 **Prerequisites:** Node.js 18+, Expo CLI, iOS Simulator or Android emulator/device
 
 #### Install and run
 
 ```bash
-cd mobile
+cd frontend
 npm install
-npx expo install expo-camera expo-image-picker expo-secure-store
 npx expo start
 ```
 
@@ -293,29 +356,9 @@ npx expo start
 ]
 ```
 
-#### `constants/api.ts`
+#### API base URL
 
-```typescript
-import * as SecureStore from 'expo-secure-store';
-
-export const API_BASE_URL = 'http://YOUR_LOCAL_IP:8000';
-
-export async function apiFetch(path: string, opts: RequestInit = {}) {
-  const token = await SecureStore.getItemAsync('access_token');
-  const res = await fetch(API_BASE_URL + path, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...opts.headers,
-    },
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-```
-
-> **Note:** Replace `YOUR_LOCAL_IP` with your machine's LAN IP (e.g. `192.168.1.x`). `localhost` won't work from a physical device.
+Configure `EXPO_PUBLIC_API_URL` (or `expo.extra.apiUrl` in app config) to point at your backend, e.g. `http://YOUR_LOCAL_IP:8000`. The app uses [`frontend/constants/api.ts`](frontend/constants/api.ts) for `apiFetch`, which stores access/refresh tokens in SecureStore and retries once after `POST /refresh` on `401`.
 
 ---
 
@@ -336,7 +379,7 @@ The sync is a full **upsert** strategy — not append-only.
 - Transactions outside the sync window are never touched
 
 **MCC resolution:**  
-MCC codes from Monobank are resolved to human-readable category names using `mcc_mappings.json`, loaded once at startup into a dict for O(1) lookups. The integer MCC is zero-padded to 4 digits before lookup to match the JSON keys (e.g. `742` → `"0742"`).
+Canonical spending categories use `mcc_to_category()` in `backend/src/mcc.py` (range rules + explicit map). For Monobank statements, `smart_categorize(mcc, amount, description)` refines ambiguous transfer MCCs using the amount sign and description keywords. Human-readable MCC labels come from `backend/data/mcc.json` via `mcc_short_description()` (keys are four-digit strings).
 
 ---
 
@@ -356,7 +399,7 @@ MCC codes from Monobank are resolved to human-readable category names using `mcc
 Image bytes
   → Google Vision text_detection API
   → raw_text (full OCR string)
-  → Gemini 2.0 Flash (structured prompt)
+  → Gemini (default `gemini-2.0-flash-lite`, structured prompt)
   → parsed JSON: { store, date, time, total, currency_code, mcc, category, items[] }
   → Transaction row (if total > 0)
   → ReceiptImage row (always — stores raw_text + parsed_data for debugging)
@@ -390,7 +433,7 @@ Categories exist at three levels:
 
 | Source | How assigned |
 |---|---|
-| **Monobank** | Derived from MCC code via `mcc_mappings.json` at sync time |
+| **Monobank** | `smart_categorize` / `mcc_to_category` in `backend/src/mcc.py` at ingest time |
 | **Manual transaction** | User picks from grid of defaults or creates a custom category inline |
 | **Receipt scan** | Set by Gemini based on store name and item context |
 
@@ -426,7 +469,7 @@ Every transaction row in the list is tappable and navigates to `/transaction/[id
 
 - [ ] Persist custom categories via a `/categories` CRUD endpoint
 - [ ] Add currency conversion using NBU open exchange rate data
-- [ ] Implement Monobank webhook for real-time transaction push (instead of manual sync)
+- [ ] Extend Monobank automation beyond current webhooks (e.g. richer corp event handling, UX)
 - [ ] Add biometric lock (`expo-local-authentication`)
 - [ ] Export transactions to CSV or PDF
 - [ ] Budget feature — set monthly spend limits per category with alerts

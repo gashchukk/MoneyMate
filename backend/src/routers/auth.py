@@ -211,7 +211,6 @@ def delete_account(
     db.query(models.ReceiptImage).filter_by(user_id=user_id).delete()
     db.query(models.Transaction).filter_by(user_id=user_id).delete()
     db.query(models.Account).filter_by(user_id=user_id).delete()
-    db.query(models.UserCategory).filter_by(user_id=user_id).delete()
     db.query(models.User).filter_by(id=user_id).delete()
     db.commit()
     return {"status": "account deleted"}
