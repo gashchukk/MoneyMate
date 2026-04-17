@@ -10,9 +10,6 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     created_at = Column(Integer, nullable=False)
     mono_integration_token = Column(String, nullable=True)
-    # Premium: unix timestamp when entitlement ends; active if set and > now (see billing/entitlements.py)
-    premium_expires_at = Column(Integer, nullable=True)
-    billing_last_sync_at = Column(Integer, nullable=True)
 
 
 class Account(Base):
@@ -72,7 +69,3 @@ class ReceiptImage(Base):
     raw_text        = Column(Text, nullable=True)          # full OCR dump
     parsed_data     = Column(JSON, nullable=True)          # structured JSON
     created_at      = Column(Integer, nullable=False)
-
-    __table_args__ = (
-        Index("ix_receipt_images_user_created", "user_id", "created_at"),
-    )

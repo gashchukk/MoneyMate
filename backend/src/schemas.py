@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, model_validator
-from typing import Optional, Any, Literal
+from typing import Optional, Any
 from src.mcc import mcc_short_description
 
 # ---------- USER ----------
@@ -20,13 +20,6 @@ class UserResponse(BaseModel):
     created_at: int
 
     model_config = {"from_attributes": True}
-
-
-class SubscriptionOut(BaseModel):
-    tier: Literal["basic", "premium"]
-    receipt_scans_used_this_month: int
-    receipt_scan_limit: Optional[int] = None  # None when unlimited (premium)
-    premium_expires_at: Optional[int] = None
 
 
 class TokenResponse(BaseModel):

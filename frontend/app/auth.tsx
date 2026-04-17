@@ -16,7 +16,6 @@ import {
   Modal,
 } from "react-native";
 import { API_BASE_URL } from '@/constants/api';
-import { persistUserIdFromAccessToken } from '@/utils/session';
 import { BRAND, BRAND_LIGHT, BRAND_MID } from '@/constants/brand';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -114,7 +113,6 @@ export default function AuthScreen() {
 
       await SecureStore.setItemAsync('access_token', data.access_token);
       await SecureStore.setItemAsync('refresh_token', data.refresh_token);
-      await persistUserIdFromAccessToken(data.access_token);
       router.replace('/(tabs)');
     } catch (e: any) {
       if (e.code !== statusCodes.SIGN_IN_CANCELLED) {
@@ -234,7 +232,6 @@ export default function AuthScreen() {
         const data = await apiLogin(email.trim(), password);
         await SecureStore.setItemAsync('access_token', data.access_token);
         await SecureStore.setItemAsync('refresh_token', data.refresh_token);
-        await persistUserIdFromAccessToken(data.access_token);
         router.replace('/(tabs)');
       } else {
         await apiSignup(email.trim(), password);

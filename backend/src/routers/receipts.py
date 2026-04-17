@@ -12,11 +12,6 @@ from src.database import get_db
 from src.security import get_current_user
 from src.receipt_parser import parse_receipt
 from src.rate_limit import limiter
-from src.billing.entitlements import (
-    BASIC_RECEIPT_SCAN_LIMIT_PER_MONTH,
-    basic_tier_scan_allowed,
-    user_has_premium,
-)
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -62,15 +57,6 @@ async def scan_receipt(
     ).first()
     if not account:
         raise HTTPException(404, "Account not found")
-
-    if not user_has_premium(db, user_id) and not basic_tier_scan_allowed(db, user_id):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "scan_limit_reached",
-                "limit": BASIC_RECEIPT_SCAN_LIMIT_PER_MONTH,
-            },
-        )
 
     # Read at most MAX_UPLOAD_BYTES + 1 so we can detect oversized files
     # without loading the entire file into memory first.

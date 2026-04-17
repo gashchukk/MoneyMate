@@ -73,10 +73,6 @@
       "googleClientIdIos": "1044437157993-3q2s17fmbf2th1vob36sb9krpjujb7cs.apps.googleusercontent.com",
       "googleClientIdAndroid": "1044437157993-qtqt3o9nansbr9t1u3cf4dvahdd1bk9r.apps.googleusercontent.com",
       "googleClientIdWeb": "1044437157993-soq2bklhq1hu4rpuihlitq5iq8bq3bpi.apps.googleusercontent.com",
-      "revenueCatApiKey": "test_RJwOTgMMKBDLgAMlWQBSmVWcdji",
-      "revenueCatIosApiKey": "test_RJwOTgMMKBDLgAMlWQBSmVWcdji",
-      "revenueCatAndroidApiKey": "test_RJwOTgMMKBDLgAMlWQBSmVWcdji",
-      "revenueCatEntitlementId": "moneymate_pro",
       "router": {},
       "eas": {
         "projectId": "a16b5b08-2e3d-4810-9f4d-0d90d7c9cafa"
