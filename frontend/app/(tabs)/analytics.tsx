@@ -9,7 +9,10 @@ import { useTranslation } from 'react-i18next';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
-import { BRAND, CATEGORY_COLORS, currencySymbol } from '@/constants/brand';
+import { BRAND, CATEGORY_COLORS } from '@/constants/brand';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
 import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
 
 type Period = '7d' | '30d' | '3m' | '6m' | '1y' | 'all';
@@ -237,9 +240,20 @@ const statStyles = StyleSheet.create({
 });
 
 // ── Main Component ────────────────────────────────────────────────────────────
+function txInSystem(tx: Transaction, currency: string, allRates: Record<string, number>): number {
+  const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+  return c ?? tx.amount;
+}
+
+function txAbsInSystem(tx: Transaction, currency: string, allRates: Record<string, number>): number {
+  const c = convertAmountToSystem(Math.abs(tx.amount), tx.currency_code, currency, allRates);
+  return c ?? Math.abs(tx.amount);
+}
+
 export default function AnalyticsScreen() {
   const { t } = useTranslation();
-  const { language } = useAppSettings();
+  const { language, currency } = useAppSettings();
+  const { allRates } = useNbuRates();
   const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -334,34 +348,40 @@ export default function AnalyticsScreen() {
   const expenses  = useMemo(() => filtered.filter(tx => tx.amount < 0 && !isInternal(tx)), [filtered]);
   const income    = useMemo(() => filtered.filter(tx => tx.amount > 0 && !isInternal(tx)), [filtered]);
 
-  const totalExpenses = expenses.reduce((s, tx) => s + Math.abs(tx.amount), 0);
-  const totalIncome   = income.reduce((s, tx) => s + tx.amount, 0);
+  const totalExpenses = useMemo(
+    () => expenses.reduce((s, tx) => s + txAbsInSystem(tx, currency, allRates), 0),
+    [expenses, currency, allRates],
+  );
+  const totalIncome = useMemo(
+    () => income.reduce((s, tx) => s + Math.max(0, txInSystem(tx, currency, allRates)), 0),
+    [income, currency, allRates],
+  );
 
   // ── Spending category slices ───────────────────────────────────────────────
   const categorySlices = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach(tx => {
       const key = tx.category ?? 'Other';
-      map[key] = (map[key] ?? 0) + Math.abs(tx.amount);
+      map[key] = (map[key] ?? 0) + txAbsInSystem(tx, currency, allRates);
     });
     const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
       .map(([key, value], i) => ({ key, label: displayCategoryLabel(key, t), value, color: getCatColor(key, i), pct: (value / total) * 100 }));
-  }, [expenses]);
+  }, [expenses, currency, allRates, t]);
 
   // ── Income category slices ─────────────────────────────────────────────────
   const incomeSlices = useMemo(() => {
     const map: Record<string, number> = {};
     income.forEach(tx => {
       const key = tx.category ?? 'Other';
-      map[key] = (map[key] ?? 0) + tx.amount;
+      map[key] = (map[key] ?? 0) + Math.max(0, txInSystem(tx, currency, allRates));
     });
     const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
       .map(([key, value], i) => ({ key, label: displayCategoryLabel(key, t), value, color: getCatColor(key, i), pct: (value / total) * 100 }));
-  }, [income]);
+  }, [income, currency, allRates, t]);
 
   // ── Monthly trend (last 6 months, always from all transactions) ───────────
   const monthlyTrend = useMemo(() => {
@@ -376,14 +396,14 @@ export default function AnalyticsScreen() {
       const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (months[key] === undefined) return;
-      if (tx.amount < 0 && tx.source !== 'transfer') months[key].exp += Math.abs(tx.amount);
-      if (tx.amount > 0 && tx.source !== 'transfer') months[key].inc += tx.amount;
+      if (tx.amount < 0 && tx.source !== 'transfer') months[key].exp += txAbsInSystem(tx, currency, allRates);
+      if (tx.amount > 0 && tx.source !== 'transfer') months[key].inc += Math.max(0, txInSystem(tx, currency, allRates));
     });
     return Object.entries(months).map(([key, val]) => ({
       label: new Date(key + '-01').toLocaleDateString(locale, { month: 'short' }),
       exp: val.exp, inc: val.inc,
     }));
-  }, [transactions, locale]);
+  }, [transactions, locale, currency, allRates]);
 
   // ── Category-drilled transactions ─────────────────────────────────────────
   const catDrilledTxs = useMemo(() => {
@@ -392,7 +412,7 @@ export default function AnalyticsScreen() {
     return pool.filter(tx => (tx.category ?? 'Other') === selectedCategoryKey);
   }, [selectedCategoryKey, expenses, income, mainTab]);
 
-  const sym = currencySymbol(980);
+  const sym = systemCurrencySymbol(currency);
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
 
@@ -509,7 +529,7 @@ export default function AnalyticsScreen() {
             <StatRow label={t('total_spent')}       value={`${sym}${totalExpenses.toFixed(2)}`}  color="#c0392b" />
             <StatRow label={t('transactions_label')}      value={`${expenses.length}`} />
             <StatRow label={t('average_expense')}   value={expenses.length > 0 ? `${sym}${(totalExpenses / expenses.length).toFixed(2)}` : '—'} />
-            <StatRow label={t('largest_expense')}   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => Math.abs(tx.amount))).toFixed(2)}` : '—'} color="#e67e22" />
+            <StatRow label={t('largest_expense')}   value={expenses.length > 0 ? `${sym}${Math.max(...expenses.map(tx => txAbsInSystem(tx, currency, allRates))).toFixed(2)}` : '—'} color="#e67e22" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>{t('top_category_label')}</Text>
               <Text style={[statStyles.value, { color: categorySlices[0] ? getCatColor(categorySlices[0].key, 0) : '#aaa' }]}>
@@ -552,7 +572,7 @@ export default function AnalyticsScreen() {
                             {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                           </Text>
                         </View>
-                        <Text style={styles.drillAmount}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
+                        <Text style={styles.drillAmount}>{sym}{txAbsInSystem(tx, currency, allRates).toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                     {catDrilledTxs.length > 8 && (
@@ -576,7 +596,7 @@ export default function AnalyticsScreen() {
                   <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
                   <Text style={styles.topMeta}>{displayTxCategoryLabel(tx, language, t) || tx.source}</Text>
                 </View>
-                <Text style={[styles.topAmount, { color: '#c0392b' }]}>{sym}{Math.abs(tx.amount).toFixed(2)}</Text>
+                <Text style={[styles.topAmount, { color: '#c0392b' }]}>{sym}{txAbsInSystem(tx, currency, allRates).toFixed(2)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -595,7 +615,7 @@ export default function AnalyticsScreen() {
               const byWeekdayCount = Array(7).fill(0);
               expenses.forEach(tx => {
                 const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-                byWeekday[d.getDay()] += Math.abs(tx.amount);
+                byWeekday[d.getDay()] += txAbsInSystem(tx, currency, allRates);
                 byWeekdayCount[d.getDay()]++;
               });
               const days = Array.from({ length: 7 }, (_, i) =>
@@ -632,7 +652,7 @@ export default function AnalyticsScreen() {
             <StatRow label={t('total_income')}      value={`${sym}${totalIncome.toFixed(2)}`}  color="#27ae60" />
             <StatRow label={t('transactions_label')}      value={`${income.length}`} />
             <StatRow label={t('average_income')}    value={income.length > 0 ? `${sym}${(totalIncome / income.length).toFixed(2)}` : '—'} />
-            <StatRow label={t('largest_income')}    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => tx.amount)).toFixed(2)}` : '—'} color="#27ae60" />
+            <StatRow label={t('largest_income')}    value={income.length > 0 ? `${sym}${Math.max(...income.map(tx => Math.max(0, txInSystem(tx, currency, allRates)))).toFixed(2)}` : '—'} color="#27ae60" />
             <View style={[statStyles.row, { borderBottomWidth: 0 }]}>
               <Text style={statStyles.label}>{t('top_category_label')}</Text>
               <Text style={[statStyles.value, { color: incomeSlices[0] ? getCatColor(incomeSlices[0].key, 0) : '#aaa' }]}>
@@ -675,7 +695,7 @@ export default function AnalyticsScreen() {
                             {new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                           </Text>
                         </View>
-                        <Text style={[styles.drillAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
+                        <Text style={[styles.drillAmount, { color: '#27ae60' }]}>+{sym}{Math.max(0, txInSystem(tx, currency, allRates)).toFixed(2)}</Text>
                       </TouchableOpacity>
                     ))}
                     {catDrilledTxs.length > 8 && (
@@ -699,7 +719,7 @@ export default function AnalyticsScreen() {
                   <Text style={styles.topDesc} numberOfLines={1}>{tx.description || '—'}</Text>
                   <Text style={styles.topMeta}>{displayTxCategoryLabel(tx, language, t) || tx.source}</Text>
                 </View>
-                <Text style={[styles.topAmount, { color: '#27ae60' }]}>+{sym}{tx.amount.toFixed(2)}</Text>
+                <Text style={[styles.topAmount, { color: '#27ae60' }]}>+{sym}{Math.max(0, txInSystem(tx, currency, allRates)).toFixed(2)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -718,7 +738,7 @@ export default function AnalyticsScreen() {
               const byWeekdayCount = Array(7).fill(0);
               income.forEach(tx => {
                 const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-                byWeekday[d.getDay()] += tx.amount;
+                byWeekday[d.getDay()] += Math.max(0, txInSystem(tx, currency, allRates));
                 byWeekdayCount[d.getDay()]++;
               });
               const days = Array.from({ length: 7 }, (_, i) =>

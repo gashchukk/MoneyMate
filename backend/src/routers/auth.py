@@ -5,6 +5,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
@@ -46,9 +47,23 @@ def _send_reset_email(to_email: str, code: str) -> None:
         logger.error("Failed to send reset email to %s: %s", to_email, e)
         raise HTTPException(500, f"Failed to send reset email: {e}")
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_WEB", "")
+GOOGLE_CLIENT_ID_WEB = os.getenv("GOOGLE_CLIENT_ID_WEB", "").strip()
 
 router = APIRouter(tags=["auth"])
+
+
+@router.get("/oauth/google/android-callback", response_class=HTMLResponse)
+def google_oauth_android_landing():
+    """
+    OAuth redirect target for Android (Expo AuthSession). Google Web clients require https://
+    redirect URIs; the app opens this URL in Custom Tabs, then AuthSession reads ?code=… from it.
+    """
+    return HTMLResponse(
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"
+        "<title>MoneyMate</title></head><body style='font-family:system-ui,sans-serif;padding:1.5rem'>"
+        "You can return to the app.</body></html>",
+        status_code=200,
+    )
 
 
 def _create_default_account(db: Session, user_id: int) -> None:
@@ -117,14 +132,14 @@ def refresh(body: schemas.RefreshRequest):
 @router.post("/auth/google", response_model=schemas.TokenResponse)
 @limiter.limit("10/minute")
 def google_auth(request: Request, body: schemas.GoogleAuthRequest, db: Session = Depends(get_db)):
-    if not GOOGLE_CLIENT_ID:
+    if not GOOGLE_CLIENT_ID_WEB:
         raise HTTPException(500, "Google auth is not configured on this server")
     try:
         id_info = google_id_token.verify_oauth2_token(
-            body.id_token, google_requests.Request(), GOOGLE_CLIENT_ID
+            body.id_token, google_requests.Request(), GOOGLE_CLIENT_ID_WEB
         )
     except ValueError as e:
-        raise HTTPException(401, f"Invalid Google token: {e}")
+        raise HTTPException(401, f"Invalid Google token: {e}") from e
 
     email = id_info.get("email")
     if not email:

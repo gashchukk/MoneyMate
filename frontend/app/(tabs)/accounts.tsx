@@ -1,44 +1,36 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
   Alert, RefreshControl, TouchableOpacity, Modal, TextInput,
-  KeyboardAvoidingView, Platform, Pressable, FlatList, useWindowDimensions,
+  KeyboardAvoidingView, Platform, Pressable, useWindowDimensions,
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
-import { useAppSettings, Currency } from '@/components/AppContext';
+import { useAppSettings } from '@/components/AppContext';
 import { useTranslation } from 'react-i18next';
 import CreateAccountModal from '@/components/CreateAccountModal';
+import ManageCurrenciesModal from '@/components/ManageCurrenciesModal';
+import {
+  CURRENCY_FLAGS,
+  DEFAULT_CURRENCIES,
+  CURRENCIES_STORE_KEY,
+  systemCurrencySymbol,
+  type NBURate,
+} from '@/constants/displayCurrencies';
 import { useFocusEffect } from 'expo-router';
 import type { Account } from '@/types';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
 
-interface ExchangeRates { USD: number; EUR: number; }
-interface NBURate { cc: string; rate: number; txt: string; }
-
-const CODE_MAP: Record<number, Currency | null> = { 980: 'UAH', 840: 'USD', 978: 'EUR' };
-const SYSTEM_SYMBOL: Record<Currency, string> = { UAH: '₴', USD: '$', EUR: '€' };
 const SOURCE_ICON: Record<string, string> = { mono: '🟡', manual: '✏️', default: '🏦' };
 const TYPE_ICON: Record<string, string> = {
   black: '🖤', white: '🤍', platinum: '🔘', iron: '⚙️', fop: '🏢',
   yellow: '🇺🇦', eAid: '🟢', cash: '💵', creditCard: '💳', debitCard: '💳',
   savings: '🏦', prepaid: '🧾', investments: '📈', loan: '📉', credit: '💰', other: '📦',
 };
-
-const CURRENCY_FLAGS: Record<string, string> = {
-  UAH: '🇺🇦', USD: '🇺🇸', EUR: '🇪🇺', GBP: '🇬🇧', PLN: '🇵🇱',
-  CZK: '🇨🇿', CHF: '🇨🇭', JPY: '🇯🇵', CAD: '🇨🇦', AUD: '🇦🇺',
-  HUF: '🇭🇺', NOK: '🇳🇴', SEK: '🇸🇪', DKK: '🇩🇰', RON: '🇷🇴',
-  CNY: '🇨🇳', TRY: '🇹🇷', ILS: '🇮🇱', BGN: '🇧🇬', MDL: '🇲🇩',
-  ISK: '🇮🇸', BYN: '🇧🇾', KZT: '🇰🇿', GEL: '🇬🇪', AMD: '🇦🇲',
-  XAU: '🥇', SGD: '🇸🇬', HKD: '🇭🇰', MXN: '🇲🇽', BRL: '🇧🇷',
-  ZAR: '🇿🇦', INR: '🇮🇳', NZD: '🇳🇿', CZK2: '🇨🇿',
-};
-
-const DEFAULT_CURRENCIES = ['USD', 'EUR'];
-const CURRENCIES_STORE_KEY = 'selected_display_currencies';
 
 type ChartPeriod = '1W' | '1M' | '3M' | '6M' | '1Y';
 const CHART_PERIODS: ChartPeriod[] = ['1W', '1M', '3M', '6M', '1Y'];
@@ -59,22 +51,13 @@ function getChartDates(period: ChartPeriod): string[] {
   return dates;
 }
 
-function convertToSystem(amount: number, fromCode: number, sys: Currency, rates: ExchangeRates): number | null {
-  const from = CODE_MAP[fromCode];
-  if (!from || from === sys) return amount;
-  const toUAH = (a: number, c: Currency) => c === 'UAH' ? a : c === 'USD' ? a * rates.USD : a * rates.EUR;
-  const fromUAH = (a: number, c: Currency) => c === 'UAH' ? a : c === 'USD' ? a / rates.USD : a / rates.EUR;
-  return fromUAH(toUAH(amount, from), sys);
-}
-
 export default function AccountsScreen() {
   const { currency } = useAppSettings();
   const { t } = useTranslation();
   const { width: screenWidth } = useWindowDimensions();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [rates, setRates] = useState<ExchangeRates>({ USD: 41.5, EUR: 44.8 });
-  const [allRates, setAllRates] = useState<Record<string, number>>({});
+  const [allRates, setAllRates] = useState<Record<string, number>>({ USD: 41.5, EUR: 44.8 });
   const [allRatesList, setAllRatesList] = useState<NBURate[]>([]);
   const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>(DEFAULT_CURRENCIES);
 
@@ -89,7 +72,6 @@ export default function AccountsScreen() {
 
   // Currency picker
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState('');
 
   // Rate chart
   const [showRateChart, setShowRateChart] = useState(false);
@@ -171,7 +153,6 @@ export default function AccountsScreen() {
         rateData.forEach(r => { rateMap[r.cc] = r.rate; });
         setAllRates(rateMap);
         setAllRatesList(rateData);
-        if (rateMap.USD && rateMap.EUR) setRates({ USD: rateMap.USD, EUR: rateMap.EUR });
       } catch {}
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
@@ -187,15 +168,28 @@ export default function AccountsScreen() {
   const personalBalance = (acc: Account) => (acc.balance ?? 0) - (acc.credit_limit ?? 0);
 
   const totalBalance = accounts.reduce((sum, acc) =>
-    sum + (convertToSystem(acc.balance ?? 0, acc.currency_code, currency, rates) ?? 0), 0);
+    sum + (convertAmountToSystem(acc.balance ?? 0, acc.currency_code, currency, allRates) ?? 0), 0);
   const totalCredit = accounts.reduce((sum, acc) =>
-    sum + (convertToSystem(acc.credit_limit ?? 0, acc.currency_code, currency, rates) ?? 0), 0);
+    sum + (convertAmountToSystem(acc.credit_limit ?? 0, acc.currency_code, currency, allRates) ?? 0), 0);
   const totalPersonal = accounts.reduce((sum, acc) =>
-    sum + (convertToSystem(personalBalance(acc), acc.currency_code, currency, rates) ?? 0), 0);
+    sum + (convertAmountToSystem(personalBalance(acc), acc.currency_code, currency, allRates) ?? 0), 0);
   const hasCreditAccounts = accounts.some(acc => (acc.credit_limit ?? 0) > 0);
 
-  // Converter — UAH is always first, then selected currencies
-  const converterCurrencies = ['UAH', ...selectedCurrencies.filter(c => c !== 'UAH')];
+  // Converter — UAH first, display currencies, plus system currency if not already listed
+  const converterCurrencies = useMemo(() => {
+    const fromSelected = ['UAH', ...selectedCurrencies.filter(c => c !== 'UAH')];
+    if (!currency || fromSelected.includes(currency)) return fromSelected;
+    return [fromSelected[0], currency, ...fromSelected.slice(1)];
+  }, [currency, selectedCurrencies]);
+
+  useEffect(() => {
+    if (!showConverter) return;
+    setConverterFrom(
+      currency && converterCurrencies.includes(currency)
+        ? currency
+        : (converterCurrencies[0] ?? 'UAH'),
+    );
+  }, [showConverter, currency, converterCurrencies]);
 
   const getConverted = () => {
     const amt = parseFloat(converterAmount);
@@ -208,14 +202,6 @@ export default function AccountsScreen() {
     });
     return result;
   };
-
-  // Currency picker list — filter by search
-  const filteredRates = currencySearch.trim()
-    ? allRatesList.filter(r =>
-        r.cc.toLowerCase().includes(currencySearch.toLowerCase()) ||
-        r.txt.toLowerCase().includes(currencySearch.toLowerCase())
-      )
-    : allRatesList;
 
   if (loading) {
     return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
@@ -242,17 +228,17 @@ export default function AccountsScreen() {
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>{t('total_balance')}</Text>
           <Text style={styles.totalAmount}>
-            {SYSTEM_SYMBOL[currency]}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {systemCurrencySymbol(currency)}{totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           <Text style={styles.totalCurrency}>{currency}</Text>
           {hasCreditAccounts && (
             <View style={styles.totalBreakdown}>
               <Text style={styles.totalBreakdownText}>
-                {t('credit')}  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                {t('credit')}  <Text style={styles.totalBreakdownValue}>{systemCurrencySymbol(currency)}{totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
               </Text>
               <Text style={styles.totalBreakdownDivider}>·</Text>
               <Text style={styles.totalBreakdownText}>
-                {t('personal')}  <Text style={styles.totalBreakdownValue}>{SYSTEM_SYMBOL[currency]}{totalPersonal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                {t('personal')}  <Text style={styles.totalBreakdownValue}>{systemCurrencySymbol(currency)}{totalPersonal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
               </Text>
             </View>
           )}
@@ -306,11 +292,13 @@ export default function AccountsScreen() {
             </TouchableOpacity>
           </View>
         ) : accounts.map(acc => {
-          const isSameCurrency = CODE_MAP[acc.currency_code] === currency;
-          const approx = !isSameCurrency
-            ? convertToSystem(acc.balance ?? 0, acc.currency_code, currency, rates)
+          const balSys = convertAmountToSystem(acc.balance ?? 0, acc.currency_code, currency, allRates);
+          const creditSys = (acc.credit_limit ?? 0) > 0
+            ? convertAmountToSystem(acc.credit_limit ?? 0, acc.currency_code, currency, allRates)
             : null;
-
+          const personalSys = (acc.credit_limit ?? 0) > 0
+            ? convertAmountToSystem(personalBalance(acc), acc.currency_code, currency, allRates)
+            : null;
           return (
             <TouchableOpacity
               key={acc.id}
@@ -324,7 +312,7 @@ export default function AccountsScreen() {
                     {TYPE_ICON[acc.type] ?? SOURCE_ICON[acc.source] ?? SOURCE_ICON.default}
                   </Text>
                   <View>
-                    <Text style={styles.accountName}>{acc.name}</Text>
+                    <Text style={styles.accountName}>{monoAccountDisplayName(acc)}</Text>
                     <Text style={styles.accountType}>{acc.type ?? acc.source}</Text>
                   </View>
                 </View>
@@ -332,26 +320,29 @@ export default function AccountsScreen() {
                   <View style={styles.accountBalanceRow}>
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={[styles.accountBalance, (acc.balance ?? 0) < 0 && { color: NEGATIVE }]}>
-                        {currencySymbol(acc.currency_code)}{(acc.balance ?? 0).toFixed(2)}
+                        {balSys !== null
+                          ? `${systemCurrencySymbol(currency)}${balSys.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : `${currencySymbol(acc.currency_code)}${(acc.balance ?? 0).toFixed(2)}`}
                       </Text>
                       {(acc.credit_limit ?? 0) > 0 && (
                         <>
                           <Text style={styles.creditRow}>
                             <Text style={styles.creditLabel}>{t('credit')} </Text>
-                            <Text style={styles.creditValue}>{currencySymbol(acc.currency_code)}{acc.credit_limit!.toFixed(2)}</Text>
+                            <Text style={styles.creditValue}>
+                              {creditSys !== null
+                                ? `${systemCurrencySymbol(currency)}${creditSys.toFixed(2)}`
+                                : `${currencySymbol(acc.currency_code)}${acc.credit_limit!.toFixed(2)}`}
+                            </Text>
                           </Text>
                           <Text style={styles.creditRow}>
                             <Text style={styles.creditLabel}>{t('personal')}  </Text>
                             <Text style={[styles.creditValue, personalBalance(acc) < 0 && { color: NEGATIVE }]}>
-                              {currencySymbol(acc.currency_code)}{personalBalance(acc).toFixed(2)}
+                              {personalSys !== null
+                                ? `${systemCurrencySymbol(currency)}${personalSys.toFixed(2)}`
+                                : `${currencySymbol(acc.currency_code)}${personalBalance(acc).toFixed(2)}`}
                             </Text>
                           </Text>
                         </>
-                      )}
-                      {approx !== null && (
-                        <Text style={styles.accountApprox}>
-                          {t('approx')} {SYSTEM_SYMBOL[currency]}{approx.toFixed(2)}
-                        </Text>
                       )}
                     </View>
                     <Text style={styles.chevron}>›</Text>
@@ -576,75 +567,20 @@ export default function AccountsScreen() {
               </ScrollView>
 
               <Text style={styles.rateHint}>
-                $1 = ₴{rates.USD.toFixed(2)}  ·  €1 = ₴{rates.EUR.toFixed(2)}
+                $1 = ₴{(allRates.USD ?? 0).toFixed(2)}  ·  €1 = ₴{(allRates.EUR ?? 0).toFixed(2)}
               </Text>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* ── Currency Picker Modal ────────────────────────────────────────────── */}
-      <Modal
+      <ManageCurrenciesModal
         visible={showCurrencyPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { setShowCurrencyPicker(false); setCurrencySearch(''); }}
-      >
-        <View style={styles.overlay}>
-          {/* Backdrop — siblings with sheet, so it never overlaps it */}
-          <Pressable style={styles.backdrop} onPress={() => { setShowCurrencyPicker(false); setCurrencySearch(''); }} />
-          <View style={[styles.sheet, styles.pickerSheet]}>
-            <View style={styles.handle} />
-            <Text style={styles.sheetTitle}>{t('manage_currencies_title')}</Text>
-            <Text style={styles.sheetSubtitle}>{t('manage_currencies_sub')}</Text>
-
-            <TextInput
-              style={styles.pickerSearch}
-              value={currencySearch}
-              onChangeText={setCurrencySearch}
-              placeholder={t('search_currency_placeholder')}
-              placeholderTextColor="#bbb"
-              clearButtonMode="while-editing"
-            />
-
-            {/* Selected chips */}
-            {selectedCurrencies.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectedChipScroll} contentContainerStyle={styles.selectedChipContent} alwaysBounceVertical={false}>
-                {selectedCurrencies.map(cc => (
-                  <TouchableOpacity key={cc} style={[styles.selectedChip, { alignSelf: 'flex-start' }]} onPress={() => toggleCurrency(cc)}>
-                    <Text style={styles.selectedChipFlag}>{CURRENCY_FLAGS[cc] ?? '🏳️'}</Text>
-                    <Text style={styles.selectedChipText}>{cc}</Text>
-                    <Text style={styles.selectedChipRemove}>✕</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
-            <FlatList
-              data={filteredRates}
-              keyExtractor={item => item.cc}
-              style={styles.pickerList}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const isSelected = selectedCurrencies.includes(item.cc);
-                return (
-                  <TouchableOpacity style={styles.pickerRow} onPress={() => toggleCurrency(item.cc)}>
-                    <Text style={styles.pickerFlag}>{CURRENCY_FLAGS[item.cc] ?? '🏳️'}</Text>
-                    <View style={styles.pickerInfo}>
-                      <Text style={styles.pickerCode}>{item.cc}</Text>
-                      <Text style={styles.pickerName} numberOfLines={1}>{item.txt}</Text>
-                    </View>
-                    <Text style={styles.pickerRate}>₴{item.rate.toFixed(2)}</Text>
-                    <View style={[styles.pickerCheck, isSelected && styles.pickerCheckActive]}>
-                      {isSelected && <Text style={styles.pickerCheckMark}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setShowCurrencyPicker(false)}
+        rates={allRatesList}
+        selectedCurrencies={selectedCurrencies}
+        onToggle={toggleCurrency}
+      />
     </>
   );
 }
@@ -811,38 +747,4 @@ const styles = StyleSheet.create({
   converterResultValue: { fontSize: 18, fontWeight: '800', color: '#1a1a1a' },
   converterResultValueActive: { color: BRAND },
   rateHint: { fontSize: 12, color: '#bbb', textAlign: 'center' },
-
-  // Currency picker
-  pickerSheet: { height: '85%', paddingHorizontal: 20 },
-  pickerSearch: {
-    backgroundColor: '#f5f5f5', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
-    fontSize: 15, color: '#1a1a1a', marginBottom: 12,
-  },
-  selectedChipScroll: { marginBottom: 12, flexGrow: 0 },
-  selectedChipContent: { gap: 6, alignItems: 'center', flexDirection: 'row' },
-  selectedChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: BRAND + '15', borderRadius: 8,
-    paddingHorizontal: 6, paddingVertical: 4,
-    borderWidth: 1, borderColor: BRAND + '30',
-  },
-  selectedChipFlag: { fontSize: 11 },
-  selectedChipText: { fontSize: 12, fontWeight: '700', color: BRAND },
-  selectedChipRemove: { fontSize: 9, color: BRAND, fontWeight: '700' },
-  pickerList: { flex: 1 },
-  pickerRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 13, gap: 12,
-    borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
-  },
-  pickerFlag: { fontSize: 22 },
-  pickerInfo: { flex: 1 },
-  pickerCode: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
-  pickerName: { fontSize: 11, color: '#aaa', marginTop: 1 },
-  pickerRate: { fontSize: 13, fontWeight: '600', color: '#888', marginRight: 4 },
-  pickerCheck: {
-    width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#ddd',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pickerCheckActive: { backgroundColor: BRAND, borderColor: BRAND },
-  pickerCheckMark: { color: '#fff', fontSize: 12, fontWeight: '800' },
 });

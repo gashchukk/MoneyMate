@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, ActivityIndicator, Alert, RefreshControl,
@@ -11,6 +11,10 @@ import { useAppSettings } from '@/components/AppContext';
 import { useTranslation } from 'react-i18next';
 import type { Transaction, Account } from '@/types';
 import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
 import {
   BRAND,
   DEFAULT_CATEGORIES,
@@ -64,7 +68,8 @@ const TX_MODES: { key: TxMode; label: string; icon: string; color: string }[] = 
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TransactionsScreen() {
-  const { language } = useAppSettings();
+  const { language, currency } = useAppSettings();
+  const { allRates } = useNbuRates();
   const { t } = useTranslation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -124,6 +129,33 @@ export default function TransactionsScreen() {
     setShowNewCategory(false);
     setNewCategoryName('');
   };
+
+  /** Monobank accounts are synced automatically; manual entry only targets other accounts. */
+  const manualEntryAccounts = useMemo(
+    () => accounts.filter((a) => a.source !== 'mono'),
+    [accounts],
+  );
+
+  useEffect(() => {
+    if (!showModal || manualEntryAccounts.length === 0) return;
+    const hasMain = manualEntryAccounts.some((a) => String(a.id) === accountId);
+    if (!hasMain) {
+      setAccountId(String(manualEntryAccounts[0].id));
+    }
+  }, [showModal, manualEntryAccounts, accountId]);
+
+  useEffect(() => {
+    if (!showModal || txMode !== 'transfer') return;
+    if (manualEntryAccounts.length < 2) {
+      if (toAccountId) setToAccountId('');
+      return;
+    }
+    const others = manualEntryAccounts.filter((a) => String(a.id) !== accountId);
+    const toOk = others.some((a) => String(a.id) === toAccountId);
+    if (!toOk) {
+      setToAccountId(String(others[0].id));
+    }
+  }, [showModal, txMode, manualEntryAccounts, accountId, toAccountId]);
 
   // ── Transfer detection ─────────────────────────────────────────────────────
   const detectPotentialTransfers = useCallback((txs: Transaction[]) => {
@@ -328,7 +360,10 @@ export default function TransactionsScreen() {
             {potentialTransfers.map(({ cashTx, monoTx }) => {
               const cashAcc = accounts.find(a => a.id === cashTx.account_id);
               const monoAcc = accounts.find(a => a.id === monoTx.account_id);
-              const sym = currencySymbol(cashTx.currency_code);
+              const cashConv = convertAmountToSystem(cashTx.amount, cashTx.currency_code, currency, allRates);
+              const monoConv = convertAmountToSystem(monoTx.amount, monoTx.currency_code, currency, allRates);
+              const symCash = cashConv !== null ? systemCurrencySymbol(currency) : currencySymbol(cashTx.currency_code);
+              const symMono = monoConv !== null ? systemCurrencySymbol(currency) : currencySymbol(monoTx.currency_code);
               const fmtDate = (tx: Transaction) => new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time)
                 .toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'short' });
               return (
@@ -338,14 +373,14 @@ export default function TransactionsScreen() {
                       <Text style={styles.reviewTxLabel}>{t('cash_withdrawal')}</Text>
                       <Text style={styles.reviewTxAcc}>{cashAcc?.name ?? '—'}</Text>
                       <Text style={styles.reviewTxDate}>{fmtDate(cashTx)}</Text>
-                      <Text style={[styles.reviewTxAmount, { color: '#c0392b' }]}>{sym}{Math.abs(cashTx.amount).toFixed(2)}</Text>
+                      <Text style={[styles.reviewTxAmount, { color: '#c0392b' }]}>{symCash}{Math.abs(cashConv !== null ? cashConv : cashTx.amount).toFixed(2)}</Text>
                     </View>
                     <Text style={styles.reviewArrow}>→</Text>
                     <View style={styles.reviewTxBox}>
                       <Text style={styles.reviewTxLabel}>{t('mono_deposit')}</Text>
                       <Text style={styles.reviewTxAcc}>{monoAcc?.name ?? '—'}</Text>
                       <Text style={styles.reviewTxDate}>{fmtDate(monoTx)}</Text>
-                      <Text style={[styles.reviewTxAmount, { color: '#27ae60' }]}>+{sym}{monoTx.amount.toFixed(2)}</Text>
+                      <Text style={[styles.reviewTxAmount, { color: '#27ae60' }]}>+{symMono}{(monoConv !== null ? monoConv : monoTx.amount).toFixed(2)}</Text>
                     </View>
                   </View>
                   <View style={styles.reviewBtns}>
@@ -384,7 +419,10 @@ export default function TransactionsScreen() {
         ) : sortedDays.map(day => {
           const date = new Date(day);
           const dayLabel = date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-          const dayTotal = byDay[day].reduce((s, tx) => s + tx.amount, 0);
+          const dayTotal = byDay[day].reduce((s, tx) => {
+            const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+            return s + (c ?? tx.amount);
+          }, 0);
           return (
             <View
               key={day}
@@ -401,7 +439,7 @@ export default function TransactionsScreen() {
               <View style={styles.dayHeader}>
                 <Text style={styles.dayLabel}>{dayLabel}</Text>
                 <Text style={[styles.dayTotal, dayTotal < 0 ? styles.negative : styles.positive]}>
-                  {dayTotal > 0 ? '+' : ''}{dayTotal.toFixed(2)}
+                  {systemCurrencySymbol(currency)}{dayTotal.toFixed(2)}
                 </Text>
               </View>
               {byDay[day].map(tx => {
@@ -433,7 +471,13 @@ export default function TransactionsScreen() {
                       </View>
                     </View>
                     <Text style={[styles.txAmount, tx.amount < 0 ? styles.negative : styles.positive]}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} {currencySymbol(tx.currency_code)}
+                      {(() => {
+                        const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+                        const amt = c ?? tx.amount;
+                        const sym = c !== null ? systemCurrencySymbol(currency) : currencySymbol(tx.currency_code);
+                        const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
+                        return `${sign}${sym}${Math.abs(amt).toFixed(2)}`;
+                      })()}
                     </Text>
                     <Text style={styles.txChevron}>›</Text>
                   </TouchableOpacity>
@@ -526,13 +570,13 @@ export default function TransactionsScreen() {
               {/* Account */}
               <Text style={styles.modalLabel}>{txMode === 'transfer' ? t('from_account') : t('account')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {accounts.map(acc => (
+                {manualEntryAccounts.map(acc => (
                   <TouchableOpacity
                     key={acc.id}
                     style={[styles.accChip, accountId === String(acc.id) && { backgroundColor: activeModeConfig.color }]}
                     onPress={() => setAccountId(String(acc.id))}
                   >
-                    <Text style={[styles.accChipText, accountId === String(acc.id) && { color: '#fff' }]}>{acc.name}</Text>
+                    <Text style={[styles.accChipText, accountId === String(acc.id) && { color: '#fff' }]}>{monoAccountDisplayName(acc)}</Text>
                     <Text style={[styles.accChipCurrency, accountId === String(acc.id) && { color: 'rgba(255,255,255,0.7)' }]}>{currencyName(acc.currency_code)}</Text>
                   </TouchableOpacity>
                 ))}
@@ -548,13 +592,13 @@ export default function TransactionsScreen() {
                   </View>
                   <Text style={styles.modalLabel}>{t('to_account')}</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                    {accounts.filter(acc => String(acc.id) !== accountId).map(acc => (
+                    {manualEntryAccounts.filter(acc => String(acc.id) !== accountId).map(acc => (
                       <TouchableOpacity
                         key={acc.id}
                         style={[styles.accChip, toAccountId === String(acc.id) && { backgroundColor: '#2980b9' }]}
                         onPress={() => setToAccountId(String(acc.id))}
                       >
-                        <Text style={[styles.accChipText, toAccountId === String(acc.id) && { color: '#fff' }]}>{acc.name}</Text>
+                        <Text style={[styles.accChipText, toAccountId === String(acc.id) && { color: '#fff' }]}>{monoAccountDisplayName(acc)}</Text>
                         <Text style={[styles.accChipCurrency, toAccountId === String(acc.id) && { color: 'rgba(255,255,255,0.7)' }]}>{currencyName(acc.currency_code)}</Text>
                       </TouchableOpacity>
                     ))}

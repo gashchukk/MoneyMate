@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, ScrollView, Image, Dimensions,
@@ -12,12 +12,14 @@ import * as SecureStore from 'expo-secure-store';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
 import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import type { Account } from '@/types';
 
 const { width: W, height: H } = Dimensions.get('window');
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Account { id: number; name: string; currency_code: number; }
 interface ReceiptItem { name: string; quantity: number; unit_price: number; total_price: number; }
 interface ParsedData { store?: string; date?: string; total?: number; currency?: string; items?: ReceiptItem[]; }
 interface ReceiptResult { id: number; transaction_id?: number; filename?: string; raw_text?: string; parsed_data?: ParsedData; }
@@ -29,7 +31,8 @@ const cs = (code: number) => currencySymbol(code);
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function ScanScreen() {
   const { t } = useTranslation();
-  const { language } = useAppSettings();
+  const { language, currency } = useAppSettings();
+  const { allRates } = useNbuRates();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
@@ -53,6 +56,18 @@ export default function ScanScreen() {
 
   const stageRef = useRef<Stage>('camera');
   stageRef.current = stage;
+
+  const receiptAccounts = useMemo(
+    () => accounts.filter((a) => a.source !== 'mono'),
+    [accounts],
+  );
+
+  useEffect(() => {
+    if (selectedAccount == null) return;
+    if (!receiptAccounts.some((a) => a.id === selectedAccount)) {
+      setSelectedAccount(receiptAccounts[0]?.id ?? null);
+    }
+  }, [receiptAccounts, selectedAccount]);
 
   // Fetch accounts when screen is focused
   // Don't reset to camera if returning from transaction detail (stage === 'result')
@@ -113,12 +128,11 @@ export default function ScanScreen() {
 
   // ── Confirm image → pick account ───────────────────────────────────────────
   const handleConfirmImage = () => {
-    if (accounts.length === 0) {
+    if (receiptAccounts.length === 0) {
       Alert.alert(t('no_accounts_create_first'), t('please_create_account_first'));
       return;
     }
-    // Auto-select first account
-    setSelectedAccount(accounts[0].id);
+    setSelectedAccount(receiptAccounts[0].id);
     setStage('account');
   };
 
@@ -311,7 +325,7 @@ export default function ScanScreen() {
           <Text style={styles.sheetSub}>{t('choose_account_sub')}</Text>
 
           <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
-            {accounts.map(acc => (
+            {receiptAccounts.map(acc => (
               <TouchableOpacity
                 key={acc.id}
                 style={[styles.accRow, selectedAccount === acc.id && styles.accRowActive]}
@@ -321,7 +335,7 @@ export default function ScanScreen() {
                   {selectedAccount === acc.id && <View style={styles.accRadioDot} />}
                 </View>
                 <View style={styles.accRowMid}>
-                  <Text style={styles.accRowName}>{acc.name}</Text>
+                  <Text style={styles.accRowName}>{monoAccountDisplayName(acc)}</Text>
                   <Text style={styles.accRowCurrency}>{cs(acc.currency_code)}</Text>
                 </View>
                 {selectedAccount === acc.id && <Text style={styles.accCheck}>✓</Text>}
@@ -378,7 +392,12 @@ export default function ScanScreen() {
     const parsed = result.parsed_data;
     const items = parsed?.items ?? [];
     const acc = accounts.find(a => a.id === selectedAccount);
-    const sym = cs(acc?.currency_code ?? 980);
+    const accCode = acc?.currency_code ?? 980;
+    const moneyInSystem = (amount: number) => {
+      const c = convertAmountToSystem(amount, accCode, currency, allRates);
+      if (c !== null) return { v: c, sym: systemCurrencySymbol(currency) };
+      return { v: amount, sym: cs(accCode) };
+    };
 
     const pushToTransactions = (timestamp: number) => {
       const date = new Date(timestamp < 1e10 ? timestamp * 1000 : timestamp).toISOString().slice(0, 10);
@@ -511,7 +530,12 @@ export default function ScanScreen() {
                 </View>
                 <View style={styles.dupTxRight}>
                   <Text style={[styles.dupTxAmount, duplicateTx.amount < 0 && { color: '#c0392b' }]}>
-                    {duplicateTx.amount < 0 ? '-' : '+'}{sym}{Math.abs(duplicateTx.amount).toFixed(2)}
+                    {(() => {
+                      const dc = convertAmountToSystem(duplicateTx.amount, duplicateTx.currency_code, currency, allRates);
+                      const amt = dc ?? duplicateTx.amount;
+                      const dsym = dc !== null ? systemCurrencySymbol(currency) : cs(duplicateTx.currency_code);
+                      return `${duplicateTx.amount < 0 ? '-' : '+'}${dsym}${Math.abs(amt).toFixed(2)}`;
+                    })()}
                   </Text>
                   <Text style={styles.dupTxSource}>{duplicateTx.source}</Text>
                 </View>
@@ -550,7 +574,9 @@ export default function ScanScreen() {
           {parsed?.total != null && (
             <View style={styles.resultTotalRow}>
               <Text style={styles.resultTotalLabel}>{t('total_charged')}</Text>
-              <Text style={styles.resultTotal}>{sym}{parsed.total.toFixed(2)}</Text>
+              <Text style={styles.resultTotal}>
+                {(() => { const m = moneyInSystem(parsed.total); return `${m.sym}${m.v.toFixed(2)}`; })()}
+              </Text>
             </View>
           )}
 
@@ -570,17 +596,23 @@ export default function ScanScreen() {
                 <View style={styles.itemLeft}>
                   <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                   {item.quantity !== 1 && (
-                    <Text style={styles.itemQty}>{item.quantity} × {sym}{item.unit_price?.toFixed(2)}</Text>
+                    <Text style={styles.itemQty}>
+                      {item.quantity} × {(() => { const m = moneyInSystem(item.unit_price ?? 0); return `${m.sym}${m.v.toFixed(2)}`; })()}
+                    </Text>
                   )}
                 </View>
-                <Text style={styles.itemPrice}>{sym}{item.total_price?.toFixed(2)}</Text>
+                <Text style={styles.itemPrice}>
+                  {(() => { const m = moneyInSystem(item.total_price ?? 0); return `${m.sym}${m.v.toFixed(2)}`; })()}
+                </Text>
               </View>
             ))}
 
             {/* Divider + total */}
             <View style={styles.itemsTotalRow}>
               <Text style={styles.itemsTotalLabel}>{t('total')}</Text>
-              <Text style={styles.itemsTotalValue}>{sym}{parsed?.total?.toFixed(2)}</Text>
+              <Text style={styles.itemsTotalValue}>
+                {(() => { const m = moneyInSystem(parsed?.total ?? 0); return `${m.sym}${m.v.toFixed(2)}`; })()}
+              </Text>
             </View>
           </View>
         )}
@@ -618,7 +650,7 @@ export default function ScanScreen() {
 
               <Text style={styles.editLabel}>{t('account')}</Text>
               <ScrollView style={{ maxHeight: 160 }} showsVerticalScrollIndicator={false}>
-                {accounts.map(acc => (
+                {receiptAccounts.map(acc => (
                   <TouchableOpacity
                     key={acc.id}
                     style={[styles.accRow, editAccountId === acc.id && styles.accRowActive]}
@@ -627,7 +659,7 @@ export default function ScanScreen() {
                     <View style={[styles.accRadio, editAccountId === acc.id && styles.accRadioActive]}>
                       {editAccountId === acc.id && <View style={styles.accRadioDot} />}
                     </View>
-                    <Text style={styles.accRowName}>{acc.name}</Text>
+                    <Text style={styles.accRowName}>{monoAccountDisplayName(acc)}</Text>
                     {editAccountId === acc.id && <Text style={styles.accCheck}>✓</Text>}
                   </TouchableOpacity>
                 ))}

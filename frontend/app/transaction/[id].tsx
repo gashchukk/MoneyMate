@@ -11,7 +11,11 @@ import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, currencySymbol, CURRENCY_NAMES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, CATEGORY_COLORS } from '@/constants/brand';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
 import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
 
 const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   grocery:    { label: 'Groceries',   icon: '🛒', color: '#27ae60', bg: '#e8f5e9' },
@@ -44,7 +48,8 @@ function formatDateTime(time: number, language: string) {
 export default function TransactionDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language } = useAppSettings();
+  const { language, currency } = useAppSettings();
+  const { allRates } = useNbuRates();
 
   const [tx, setTx] = useState<Transaction | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
@@ -163,6 +168,9 @@ export default function TransactionDetailScreen() {
   const isExpense = tx.amount < 0;
   const amountColor = isExpense ? '#c0392b' : '#27ae60';
   const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
+  const amountSys = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+  const heroSym = amountSys !== null ? systemCurrencySymbol(currency) : currencySymbol(tx.currency_code);
+  const heroAmount = amountSys !== null ? Math.abs(amountSys) : Math.abs(tx.amount);
 
   return (
     <>
@@ -182,7 +190,7 @@ export default function TransactionDetailScreen() {
         <View style={[styles.hero, { backgroundColor: cat.bg }]}>
           <Text style={styles.heroIcon}>{cat.icon}</Text>
           <Text style={[styles.heroAmount, { color: amountColor }]}>
-            {isExpense ? '−' : '+'}{currencySymbol(tx.currency_code)}{Math.abs(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {isExpense ? '−' : '+'}{heroSym}{heroAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           <View style={[styles.catBadge, { backgroundColor: cat.color + '20' }]}>
             <Text style={[styles.catBadgeText, { color: cat.color }]}>
@@ -320,7 +328,7 @@ export default function TransactionDetailScreen() {
                     style={[styles.accChip, editAccountId === String(acc.id) && styles.accChipActive]}
                     onPress={() => setEditAccountId(String(acc.id))}
                   >
-                    <Text style={[styles.accChipText, editAccountId === String(acc.id) && styles.accChipTextActive]}>{acc.name}</Text>
+                    <Text style={[styles.accChipText, editAccountId === String(acc.id) && styles.accChipTextActive]}>{monoAccountDisplayName(acc)}</Text>
                     <Text style={[styles.accChipSub, editAccountId === String(acc.id) && styles.accChipSubActive]}>{CURRENCY_NAMES[acc.currency_code] ?? ''}</Text>
                   </TouchableOpacity>
                 ))}

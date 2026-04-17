@@ -3,7 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import '../i18n'; // initialise i18next
 import i18n from 'i18next';
 
-export type Currency = 'USD' | 'EUR' | 'UAH';
+/** NBU ISO currency code (e.g. UAH, USD, PLN). */
+export type Currency = string;
 export type Language = 'en' | 'uk';
 
 interface AppSettings {

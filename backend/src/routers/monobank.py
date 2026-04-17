@@ -17,6 +17,19 @@ router = APIRouter(prefix="/mono", tags=["monobank"])
 # Set BACKEND_URL in .env so Monobank can reach the webhook, e.g. https://yourserver.com
 _BACKEND_URL = os.getenv("BACKEND_URL", "").rstrip("/")
 
+# Monobank Personal API returns account.type in lowercase (e.g. white, black, platinum).
+_MONO_TYPE_PRETTY = {
+    "eaid": "eAid",
+    "fop": "FOP",
+}
+
+
+def _mono_account_display_name(acc_type: str) -> str:
+    raw = (acc_type or "unknown").strip() or "unknown"
+    key = raw.lower()
+    pretty = _MONO_TYPE_PRETTY.get(key, raw.capitalize())
+    return f"{pretty} Mono"
+
 
 @router.post("/auth/request")
 @limiter.limit("5/minute")
@@ -100,17 +113,18 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
         raw_credit = acc.get("creditLimit")
         credit_limit = raw_credit / 100 if raw_credit else 0
         acc_type = acc.get("type") or "unknown"
+        display_name = _mono_account_display_name(acc_type)
         if existing:
             existing.balance = balance
             existing.credit_limit = credit_limit
             existing.currency_code = acc.get("currencyCode")
-            existing.name = acc_type.capitalize() + " card"
+            existing.name = display_name
             existing.type = acc_type
             synced_accounts.append(existing)
         else:
             new_acc = models.Account(
                 user_id=user_id,
-                name=acc_type.capitalize() + " card",
+                name=display_name,
                 type=acc_type,
                 source="mono",
                 external_account_id=acc.get("id"),
@@ -283,17 +297,18 @@ def mono_sync_accounts(
         raw_credit = acc.get("creditLimit")
         credit_limit = raw_credit / 100 if raw_credit else 0
         acc_type = acc.get("type") or "unknown"
+        display_name = _mono_account_display_name(acc_type)
 
         if existing:
             existing.balance = balance
             existing.credit_limit = credit_limit
             existing.currency_code = acc.get("currencyCode")
-            existing.name = acc_type + "card"
+            existing.name = display_name
             existing.type = acc_type
         else:
             db.add(models.Account(
                 user_id=user_id,
-                name=acc_type + "card",
+                name=display_name,
                 type=acc_type,
                 source="mono",
                 external_account_id=acc.get("id"),

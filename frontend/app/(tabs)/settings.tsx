@@ -8,9 +8,15 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
-import { useAppSettings, Currency, Language } from '@/components/AppContext';
+import { useAppSettings, Language } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
+import SystemCurrencyPickerModal from '@/components/SystemCurrencyPickerModal';
+import type { NBURate } from '@/constants/displayCurrencies';
 import QRCode from 'react-native-qrcode-svg';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
 
 const TYPE_ICON: Record<string, string> = {
   black: '🖤', white: '🤍', platinum: '🔘', iron: '⚙️',
@@ -23,6 +29,7 @@ const TYPE_ICON: Record<string, string> = {
 export default function SettingsScreen() {
   const { t } = useTranslation();
   const { currency, setCurrency, language, setLanguage } = useAppSettings();
+  const { allRates } = useNbuRates();
   const [rates, setRates] = useState<{ USD: number; EUR: number } | null>(null);
   const [monoLoading, setMonoLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -44,6 +51,9 @@ export default function SettingsScreen() {
   const [confirmPw, setConfirmPw] = useState('');
   const [changePwLoading, setChangePwLoading] = useState(false);
 
+  const [allRatesList, setAllRatesList] = useState<NBURate[]>([]);
+  const [showSystemCurrencyPicker, setShowSystemCurrencyPicker] = useState(false);
+
   // ── Load Monobank status ──────────────────────────────────────────────────
   const loadMonoStatus = async () => {
     try {
@@ -58,7 +68,8 @@ export default function SettingsScreen() {
     loadMonoStatus();
     fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json')
       .then(r => r.json())
-      .then((data: any[]) => {
+      .then((data: NBURate[]) => {
+        setAllRatesList(Array.isArray(data) ? data : []);
         const usd = data.find(r => r.cc === 'USD')?.rate;
         const eur = data.find(r => r.cc === 'EUR')?.rate;
         if (usd && eur) setRates({ USD: usd, EUR: eur });
@@ -300,13 +311,13 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>{t('system_currency')}</Text>
       <View style={styles.card}>
         {([
-          { c: 'UAH' as Currency, flag: '🇺🇦', name: t('ukrainian_hryvnia'), rate: '1.00 ₴' },
-          { c: 'USD' as Currency, flag: '🇺🇸', name: t('us_dollar'), rate: rates ? `${rates.USD.toFixed(2)} ₴` : '…' },
-          { c: 'EUR' as Currency, flag: '🇪🇺', name: t('euro_name'), rate: rates ? `${rates.EUR.toFixed(2)} ₴` : '…' },
-        ]).map(({ c, flag, name, rate }, i, arr) => (
+          { c: 'UAH', flag: '🇺🇦', name: t('ukrainian_hryvnia'), rate: '1.00 ₴' },
+          { c: 'USD', flag: '🇺🇸', name: t('us_dollar'), rate: rates ? `${rates.USD.toFixed(2)} ₴` : '…' },
+          { c: 'EUR', flag: '🇪🇺', name: t('euro_name'), rate: rates ? `${rates.EUR.toFixed(2)} ₴` : '…' },
+        ]).map(({ c, flag, name, rate }) => (
           <TouchableOpacity
             key={c}
-            style={[styles.optionRow, i < arr.length - 1 && styles.optionBorder]}
+            style={[styles.optionRow, styles.optionBorder]}
             onPress={() => setCurrency(c)}
           >
             <Text style={styles.currencyFlag}>{flag}</Text>
@@ -319,6 +330,22 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => setShowSystemCurrencyPicker(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.currencyFlag}>⋯</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.currencyName}>{t('more_currencies')}</Text>
+            <Text style={styles.currencyRate}>
+              {['UAH', 'USD', 'EUR'].includes(currency)
+                ? t('pick_system_currency_hint')
+                : `${currency} · ${t('pick_system_currency_hint')}`}
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Language ── */}
@@ -512,9 +539,14 @@ export default function SettingsScreen() {
               >
                 <Text style={styles.accPickerIcon}>{TYPE_ICON[acc.type] ?? '🏦'}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.accPickerName}>{acc.name}</Text>
+                  <Text style={styles.accPickerName}>{monoAccountDisplayName(acc)}</Text>
                   <Text style={styles.accPickerBalance}>
-                    {currencySymbol(acc.currency_code)}{(acc.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {(() => {
+                      const balSys = convertAmountToSystem(acc.balance ?? 0, acc.currency_code, currency, allRates);
+                      const sym = balSys !== null ? systemCurrencySymbol(currency) : currencySymbol(acc.currency_code);
+                      const val = balSys !== null ? balSys : (acc.balance ?? 0);
+                      return `${sym}${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    })()}
                   </Text>
                 </View>
                 <View style={[styles.checkbox, active && styles.checkboxActive]}>
@@ -604,6 +636,14 @@ export default function SettingsScreen() {
         </View>
       </KeyboardAvoidingView>
     </Modal>
+
+    <SystemCurrencyPickerModal
+      visible={showSystemCurrencyPicker}
+      onClose={() => setShowSystemCurrencyPicker(false)}
+      rates={allRatesList}
+      selectedCode={currency}
+      onSelect={cc => setCurrency(cc)}
+    />
     </>
   );
 }

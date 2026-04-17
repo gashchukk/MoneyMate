@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bohdanhashchuk.moneymate"
+      "bundleIdentifier": "com.bohdanhashchuk.moneymate",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.bohdanhashchuk.moneymate",

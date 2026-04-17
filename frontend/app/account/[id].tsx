@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, ActivityIndicator,
   Alert, RefreshControl, TouchableOpacity, StatusBar, Modal,
@@ -10,6 +10,10 @@ import { useAppSettings } from '@/components/AppContext';
 import EditAccountModal from '@/components/EditAccountModal';
 import type { Account, Transaction } from '@/types';
 import { BRAND, currencySymbol } from '@/constants/brand';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { useNbuRates } from '@/hooks/useNbuRates';
+import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
 
 const mccColor = (mcc: number | null) => {
   if (!mcc) return '#f9f9f9';
@@ -66,7 +70,8 @@ function formatDate(dateStr: string, lang: string) {
 export default function AccountDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language } = useAppSettings();
+  const { language, currency } = useAppSettings();
+  const { allRates } = useNbuRates();
 
   const [account, setAccount] = useState<Account | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -123,9 +128,18 @@ export default function AccountDetailScreen() {
   });
   const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
-  const totalIn = transactions.filter(tx => tx.amount > 0).reduce((s, tx) => s + tx.amount, 0);
-  const totalOut = transactions.filter(tx => tx.amount < 0).reduce((s, tx) => s + tx.amount, 0);
+  // ── Stats (system currency via NBU when possible) ───────────────────────────
+  const { totalIn, totalOut } = useMemo(() => {
+    let tin = 0;
+    let tout = 0;
+    for (const tx of transactions) {
+      const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+      const v = c ?? tx.amount;
+      if (v > 0) tin += v;
+      else tout += v;
+    }
+    return { totalIn: tin, totalOut: tout };
+  }, [transactions, currency, allRates]);
 
   if (loading) {
     return (
@@ -137,7 +151,10 @@ export default function AccountDetailScreen() {
 
   if (!account) return null;
 
-  const sym = currencySymbol(account.currency_code);
+  const balanceSys = convertAmountToSystem(account.balance ?? 0, account.currency_code, currency, allRates);
+  const heroSym = balanceSys !== null ? systemCurrencySymbol(currency) : currencySymbol(account.currency_code);
+  const heroBalance = balanceSys !== null ? balanceSys : (account.balance ?? 0);
+  const listSym = systemCurrencySymbol(currency);
 
   return (
     <>
@@ -160,24 +177,24 @@ export default function AccountDetailScreen() {
           <Text style={styles.heroIcon}>
             {TYPE_ICON[account.type] ?? SOURCE_ICON[account.source] ?? '🏦'}
           </Text>
-          <Text style={styles.heroName}>{account.name}</Text>
+          <Text style={styles.heroName}>{monoAccountDisplayName(account)}</Text>
           <Text style={styles.heroType}>{account.type ?? account.source}</Text>
 
           {/* Balance */}
           <Text style={styles.heroBalance}>
-            {sym}{(account.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {heroSym}{heroBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
 
           {/* Stats row */}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>{t('income')}</Text>
-              <Text style={[styles.statValue, styles.positive]}>+{sym}{totalIn.toFixed(2)}</Text>
+              <Text style={[styles.statValue, styles.positive]}>+{listSym}{totalIn.toFixed(2)}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>{t('expenses')}</Text>
-              <Text style={[styles.statValue, styles.negative]}>{sym}{totalOut.toFixed(2)}</Text>
+              <Text style={[styles.statValue, styles.negative]}>{listSym}{totalOut.toFixed(2)}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
@@ -214,13 +231,16 @@ export default function AccountDetailScreen() {
               <Text style={styles.emptyText}>{t('no_transactions_yet')}</Text>
             </View>
           ) : sortedDays.map(day => {
-            const dayTotal = byDay[day].reduce((s, tx) => s + tx.amount, 0);
+            const dayTotal = byDay[day].reduce((s, tx) => {
+              const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+              return s + (c ?? tx.amount);
+            }, 0);
             return (
               <View key={day} style={styles.dayBlock}>
                 <View style={styles.dayHeader}>
                   <Text style={styles.dayLabel}>{formatDate(day, language)}</Text>
                   <Text style={[styles.dayTotal, dayTotal < 0 ? styles.negative : styles.positive]}>
-                    {dayTotal > 0 ? '+' : ''}{dayTotal.toFixed(2)}
+                    {listSym}{dayTotal.toFixed(2)}
                   </Text>
                 </View>
                 {byDay[day].map(tx => (
@@ -234,7 +254,13 @@ export default function AccountDetailScreen() {
                       </Text>
                     </View>
                     <Text style={[styles.txAmount, tx.amount < 0 ? styles.negative : styles.positive]}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} {currencySymbol(tx.currency_code)}
+                      {(() => {
+                        const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+                        const amt = c ?? tx.amount;
+                        const sym = c !== null ? systemCurrencySymbol(currency) : currencySymbol(tx.currency_code);
+                        const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
+                        return `${sign}${sym}${Math.abs(amt).toFixed(2)}`;
+                      })()}
                     </Text>
                   </TouchableOpacity>
                 ))}

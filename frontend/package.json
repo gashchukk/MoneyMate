@@ -6,9 +6,13 @@
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
+    "android:clean": "rm -rf android/app/.cxx android/app/build android/build",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "eas:build:ios": "npx eas-cli@18 build --platform ios --profile production",
+    "eas:build:ios:local": "npx eas-cli@18 build --platform ios --profile production --local",
+    "eas:submit:ios": "npx eas-cli@18 submit --platform ios --latest --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
