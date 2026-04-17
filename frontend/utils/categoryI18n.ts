@@ -38,7 +38,7 @@ export function displayCategoryLabel(label: string | null | undefined, t: TFunct
 /**
  * Best display label for a transaction's category/MCC.
  * Priority:
- *   1. MCC label from mcc.json in the user's language (full 10k+ coverage)
+ *   1. MCC label from the API (/mcc/{code} → group.description uk/en from mcc_with_groups.json)
  *   2. Canonical category translated via i18n keys
  *   3. Raw category string (custom categories)
  */

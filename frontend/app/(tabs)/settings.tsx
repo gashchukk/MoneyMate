@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Alert, ActivityIndicator, Linking, Modal, TextInput,
   KeyboardAvoidingView, Platform, AppState, AppStateStatus,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { router } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { apiFetch, SessionExpiredError } from '@/constants/api';
+import { apiFetch, SessionExpiredError, signOut, apiFetchText } from '@/constants/api';
 import { useAppSettings, Currency, Language } from '@/components/AppContext';
 import { BRAND, currencySymbol } from '@/constants/brand';
 import QRCode from 'react-native-qrcode-svg';
@@ -43,6 +43,56 @@ export default function SettingsScreen() {
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [changePwLoading, setChangePwLoading] = useState(false);
+
+  const [sub, setSub] = useState<{
+    tier: string;
+    receipt_scans_used_this_month: number;
+    receipt_scan_limit: number | null;
+  } | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  const loadSubscription = useCallback(async () => {
+    try {
+      const data = await apiFetch('/me/subscription');
+      setSub(data);
+    } catch {
+      setSub(null);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSubscription();
+    }, [loadSubscription])
+  );
+
+  const handleExportCsv = async () => {
+    setExportLoading(true);
+    try {
+      const csv = await apiFetchText('/export/transactions');
+      const { File, Paths } = await import('expo-file-system');
+      const Sharing = await import('expo-sharing');
+      const file = new File(Paths.cache, 'moneymate-transactions.csv');
+      file.write(csv, { encoding: 'utf8' });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: t('export_transactions_csv') });
+      } else {
+        Alert.alert(t('done'), t('export_saved_hint'));
+      }
+    } catch (e: any) {
+      if (e?.message === 'export_requires_premium') {
+        Alert.alert(t('export_requires_premium_title'), t('export_requires_premium_body'), [
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('subscription_title'), onPress: () => router.push('/subscription' as Href) },
+        ]);
+      } else {
+        Alert.alert(t('error'), e?.message ?? t('something_went_wrong'));
+      }
+    } finally {
+      setExportLoading(false);
+    }
+  };
 
   // ── Load Monobank status ──────────────────────────────────────────────────
   const loadMonoStatus = async () => {
@@ -259,10 +309,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               await apiFetch('/users/me', { method: 'DELETE' });
-              await SecureStore.deleteItemAsync('access_token');
-              await SecureStore.deleteItemAsync('refresh_token');
-              await SecureStore.deleteItemAsync('mono_request_id');
-              router.replace('/auth');
+              await signOut();
             } catch (e: any) {
               Alert.alert(t('error'), e.message);
             }
@@ -279,10 +326,7 @@ export default function SettingsScreen() {
       {
         text: t('logout'), style: 'destructive',
         onPress: async () => {
-          await SecureStore.deleteItemAsync('access_token');
-          await SecureStore.deleteItemAsync('refresh_token');
-          await SecureStore.deleteItemAsync('mono_request_id');
-          router.replace('/auth');
+          await signOut();
         },
       },
     ]);
@@ -336,6 +380,43 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* ── Subscription & export ── */}
+      <Text style={styles.sectionTitle}>{t('subscription_section')}</Text>
+      <View style={styles.card}>
+        <TouchableOpacity
+          style={[styles.actionRow, styles.optionBorder]}
+          onPress={() => router.push('/subscription' as Href)}
+        >
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>✨</Text>
+            <View>
+              <Text style={styles.actionLabel}>{t('moneymate_pro_title')}</Text>
+              <Text style={styles.actionHint}>
+                {sub?.tier === 'premium' ? t('subscription_status_premium') : t('subscription_status_basic')}
+                {sub?.tier !== 'premium' && sub?.receipt_scan_limit != null
+                  ? ` · ${t('receipt_scans_usage', { used: sub.receipt_scans_used_this_month, limit: sub.receipt_scan_limit })}`
+                  : ''}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionRow}
+          onPress={handleExportCsv}
+          disabled={exportLoading}
+        >
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>📤</Text>
+            <View>
+              <Text style={styles.actionLabel}>{t('export_transactions_csv')}</Text>
+              <Text style={styles.actionHint}>{t('export_transactions_hint')}</Text>
+            </View>
+          </View>
+          {exportLoading ? <ActivityIndicator color={BRAND} /> : <Text style={styles.chevron}>›</Text>}
+        </TouchableOpacity>
       </View>
 
       {/* ── Account ── */}

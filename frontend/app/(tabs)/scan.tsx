@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, type Href } from 'expo-router';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
 import * as SecureStore from 'expo-secure-store';
 import { useTranslation } from 'react-i18next';
@@ -160,8 +160,33 @@ export default function ScanScreen() {
       });
 
       if (!response.ok) {
-        const err = await response.text();
-        throw new Error(err || `HTTP ${response.status}`);
+        const errText = await response.text();
+        if (response.status === 403) {
+          try {
+            const j = JSON.parse(errText);
+            const detail = j?.detail;
+            const code = typeof detail === 'object' && detail?.code ? detail.code : null;
+            if (code === 'scan_limit_reached') {
+              const lim = typeof detail?.limit === 'number' ? detail.limit : 20;
+              setStage('account');
+              Alert.alert(
+                t('scan_limit_title'),
+                t('scan_limit_body', { limit: lim }),
+                [
+                  { text: t('cancel'), style: 'cancel' },
+                  {
+                    text: t('subscription_title'),
+                    onPress: () => router.push('/subscription' as Href),
+                  },
+                ]
+              );
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        throw new Error(errText || `HTTP ${response.status}`);
       }
 
       const data: ReceiptResult = await response.json();

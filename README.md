@@ -63,7 +63,7 @@ moneymate/
 │   ├── vercel.json             # Vercel serverless routing
 │   ├── requirements.txt
 │   ├── data/
-│   │   └── mcc.json            # MCC metadata (descriptions); category rules in src/mcc.py
+│   │   └── mcc_with_groups.json  # MCC metadata + ISO group; categories built in src/mcc.py
 │   └── src/
 │       ├── database.py         # Engine + session
 │       ├── models.py           # SQLAlchemy ORM models
@@ -156,7 +156,7 @@ flowchart LR
 
 | Logic | Why | Where |
 |---|---|---|
-| `mcc_to_category` — range checks + dict lookup | Map bank MCC codes to app categories in O(1)-style fashion | `backend/src/mcc.py`, data `backend/data/mcc.json` |
+| `mcc_to_category` — group.type + ISO ranges | Map bank MCC codes to app categories | `backend/src/mcc.py`, data `backend/data/mcc_with_groups.json` |
 | `smart_categorize` — amount sign + regex keywords | Disambiguate Monobank “transfer” MCCs (salary vs P2P, etc.) | `backend/src/mcc.py`; used in `src/routers/monobank.py` |
 | Gemini prompt + JSON cleanup + multi-format date parse | Turn noisy OCR text into a strict transaction-shaped object | `backend/src/receipt_parser.py` |
 | Skip insert if `external_tx_id` exists | Idempotent sync and webhooks | `backend/src/routers/monobank.py` |
@@ -379,7 +379,7 @@ The sync is a full **upsert** strategy — not append-only.
 - Transactions outside the sync window are never touched
 
 **MCC resolution:**  
-Canonical spending categories use `mcc_to_category()` in `backend/src/mcc.py` (range rules + explicit map). For Monobank statements, `smart_categorize(mcc, amount, description)` refines ambiguous transfer MCCs using the amount sign and description keywords. Human-readable MCC labels come from `backend/data/mcc.json` via `mcc_short_description()` (keys are four-digit strings).
+Canonical spending categories use `mcc_to_category()` in `backend/src/mcc.py`, derived from each code’s ISO `group.type` in `mcc_with_groups.json`, plus standard MCC range rules (airlines, hotels, groceries, medical, education, etc.). For Monobank statements, `smart_categorize(mcc, amount, description)` refines ambiguous transfer MCCs using the amount sign and description keywords. Human-readable MCC labels come from the same file via `mcc_short_description()` (keys are four-digit strings).
 
 ---
 

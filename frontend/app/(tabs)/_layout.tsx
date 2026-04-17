@@ -1,5 +1,8 @@
 import { Tabs } from 'expo-router';
 import { Text, View, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import { getUserIdFromJwt } from '@/utils/jwt';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppSettings, t } from '@/components/AppContext';
 import { BRAND } from '@/constants/brand';
@@ -7,6 +10,23 @@ import { BRAND } from '@/constants/brand';
 function TabsWithContext() {
   const { language } = useAppSettings();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const token = await SecureStore.getItemAsync('access_token');
+      if (!token || !alive) return;
+      const uid = getUserIdFromJwt(token);
+      if (uid == null) return;
+      await SecureStore.setItemAsync('user_id', String(uid));
+      const { configureRevenueCat, logInRevenueCat } = await import('@/lib/revenuecat');
+      await configureRevenueCat();
+      await logInRevenueCat(String(uid));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <Tabs
