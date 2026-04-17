@@ -236,8 +236,6 @@
   "please_log_in_continue": "Please log in to continue.",
   "something_went_wrong": "Something went wrong.",
   "google_login_failed": "Google login failed",
-  "google_sign_in_no_id_token": "Google did not return an ID token. Check Web client ID and OAuth settings.",
-  "google_oauth_redirect_hint": "In Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Web client → Authorized redirect URIs, add your API base URL plus: /oauth/google/android-callback (must be https), e.g. https://money-mate-neon-beta.vercel.app/oauth/google/android-callback — then redeploy the backend and try again.",
   "password_mismatch": "Password mismatch",
   "passwords_do_not_match": "Passwords do not match.",
   "placeholder_email": "you@example.com",

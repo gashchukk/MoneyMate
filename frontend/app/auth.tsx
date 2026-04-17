@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -20,28 +20,14 @@ import { BRAND, BRAND_LIGHT, BRAND_MID } from '@/constants/brand';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
-WebBrowser.maybeCompleteAuthSession();
-
 const extra = Constants.expoConfig?.extra ?? {};
 
-const webClientId =
-  extra.googleClientIdWeb ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ?? '';
-const iosClientId =
-  extra.googleClientIdIos ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '';
-
-/** Web OAuth client ID — used for Android browser flow (no SHA-1 on device). Must match backend GOOGLE_CLIENT_ID_WEB. */
-const GOOGLE_WEB_CLIENT_FALLBACK =
-  '1044437157993-soq2bklhq1hu4rpuihlitq5iq8bq3bpi.apps.googleusercontent.com';
-
 GoogleSignin.configure({
-  iosClientId,
-  webClientId: webClientId || GOOGLE_WEB_CLIENT_FALLBACK,
-  /** Needed on Android for a non-null ID token when verifying on your backend. */
+  iosClientId: extra.googleClientIdIos ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS ?? '',
+  webClientId: extra.googleClientIdWeb ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB ?? '',
   scopes: ['openid', 'profile', 'email'],
 });
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -110,102 +96,12 @@ export default function AuthScreen() {
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  /** Browser OAuth on Android — avoids native DEVELOPER_ERROR / SHA-1 issues. Uses Web client ID + redirect in Google Cloud. */
-  const oauthWebClientId = webClientId || GOOGLE_WEB_CLIENT_FALLBACK;
-  /** Google Web OAuth clients require https redirect URIs; must match backend route + Google Console. */
-  const googleAndroidRedirectUri =
-    Platform.OS === 'android' && API_BASE_URL
-      ? `${API_BASE_URL.replace(/\/$/, '')}/oauth/google/android-callback`
-      : '';
-  const [googleOAuthRequest, googleOAuthResult, promptGoogleOAuth] = Google.useIdTokenAuthRequest({
-    clientId: oauthWebClientId,
-    ...(googleAndroidRedirectUri ? { redirectUri: googleAndroidRedirectUri } : {}),
-  });
-  const googleOAuthTokenHandled = useRef<string | null>(null);
-  const androidOauthTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const completeGoogleLoginWithIdToken = useCallback(async (idToken: string) => {
-    const res = await fetch(`${API_BASE_URL}/auth/google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_token: idToken }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Google login failed');
-    await SecureStore.setItemAsync('access_token', data.access_token);
-    await SecureStore.setItemAsync('refresh_token', data.refresh_token);
-    router.replace('/(tabs)');
-  }, []);
-
-  /** After code exchange, Expo merges `id_token` into the hook result (may arrive after `promptAsync` resolves). */
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    if (!googleOAuthResult || googleOAuthResult.type !== 'success') return;
-    const idToken =
-      googleOAuthResult.params.id_token ||
-      (googleOAuthResult as { authentication?: { idToken?: string } }).authentication?.idToken ||
-      '';
-    if (!idToken) return;
-    if (googleOAuthTokenHandled.current === idToken) return;
-    googleOAuthTokenHandled.current = idToken;
-    if (androidOauthTimeoutRef.current) {
-      clearTimeout(androidOauthTimeoutRef.current);
-      androidOauthTimeoutRef.current = null;
-    }
-    let cancelled = false;
-    setGoogleLoading(true);
-    (async () => {
-      try {
-        await completeGoogleLoginWithIdToken(idToken);
-      } catch (e: any) {
-        if (!cancelled) {
-          Alert.alert(t('google_login_failed'), e?.message || t('something_went_wrong'));
-        }
-      } finally {
-        if (!cancelled) setGoogleLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [googleOAuthResult, completeGoogleLoginWithIdToken, t]);
-
   const handleGoogleSignIn = async () => {
-    let keepSpinnerForAndroidOAuth = false;
     setGoogleLoading(true);
     try {
-      // ── Android: OAuth in browser (Custom Tabs). Google Cloud (Web client) needs redirect:
-      // com.bohdanhashchuk.moneymate:/oauthredirect
       if (Platform.OS === 'android') {
-        const result = await promptGoogleOAuth();
-        if (result.type === 'cancel' || result.type === 'dismiss' || result.type === 'locked') {
-          return;
-        }
-        if (result.type !== 'success') {
-          Alert.alert(t('google_login_failed'), `${result.type}`);
-          return;
-        }
-        const immediate =
-          result.params.id_token ||
-          (result as { authentication?: { idToken?: string } }).authentication?.idToken ||
-          '';
-        if (immediate) {
-          googleOAuthTokenHandled.current = immediate;
-          await completeGoogleLoginWithIdToken(immediate);
-          return;
-        }
-        if (__DEV__) console.warn('[Google OAuth] awaiting id_token after code exchange', result);
-        keepSpinnerForAndroidOAuth = true;
-        androidOauthTimeoutRef.current = setTimeout(() => {
-          androidOauthTimeoutRef.current = null;
-          setGoogleLoading(false);
-          Alert.alert(t('google_login_failed'), t('google_sign_in_no_id_token'));
-        }, 60_000);
-        return;
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       }
-
-      // ── iOS: native Google Sign-In
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const signInResult = await GoogleSignin.signIn();
       if (signInResult.type !== 'success') {
         return;
@@ -215,30 +111,24 @@ export default function AuthScreen() {
         const tokens = await GoogleSignin.getTokens();
         idToken = tokens.idToken;
       }
-      if (!idToken) throw new Error(t('google_sign_in_no_id_token'));
+      if (!idToken) throw new Error('No ID token returned from Google.');
 
-      await completeGoogleLoginWithIdToken(idToken);
+      const res = await fetch(`${API_BASE_URL}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Google login failed');
+
+      await SecureStore.setItemAsync('access_token', data.access_token);
+      await SecureStore.setItemAsync('refresh_token', data.refresh_token);
+      router.replace('/(tabs)');
     } catch (e: any) {
       if (e?.code === statusCodes.SIGN_IN_CANCELLED) return;
-
-      const msg = String(e?.message ?? e ?? '');
-      const code = e?.code;
-
-      if (__DEV__) {
-        console.warn('[Google Sign-In]', { code, message: msg, raw: e });
-      }
-
-      const oauthHint =
-        Platform.OS === 'android' &&
-        (/redirect_uri|redirect uri|invalid_grant|400/i.test(msg) || /access_denied/i.test(msg));
-      Alert.alert(
-        t('google_login_failed'),
-        oauthHint ? t('google_oauth_redirect_hint') : msg || t('something_went_wrong'),
-      );
+      Alert.alert(t('google_login_failed'), e?.message ?? String(e));
     } finally {
-      if (!keepSpinnerForAndroidOAuth) {
-        setGoogleLoading(false);
-      }
+      setGoogleLoading(false);
     }
   };
 
@@ -500,7 +390,7 @@ export default function AuthScreen() {
             <TouchableOpacity
               style={[styles.googleBtn, googleLoading && styles.submitBtnDisabled]}
               onPress={handleGoogleSignIn}
-              disabled={googleLoading || (Platform.OS === 'android' && !googleOAuthRequest)}
+              disabled={googleLoading}
               activeOpacity={0.85}
             >
               {googleLoading ? (

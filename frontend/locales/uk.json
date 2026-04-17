@@ -236,8 +236,6 @@
   "please_log_in_continue": "Будь ласка, увійдіть, щоб продовжити.",
   "something_went_wrong": "Щось пішло не так.",
   "google_login_failed": "Помилка входу через Google",
-  "google_sign_in_no_id_token": "Google не повернув ID token. Перевірте Web client ID та OAuth.",
-  "google_oauth_redirect_hint": "У Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client → Authorized redirect URIs додайте https-адресу вашого API + /oauth/google/android-callback (наприклад https://money-mate-neon-beta.vercel.app/oauth/google/android-callback), задеплойте backend і спробуйте знову.",
   "password_mismatch": "Паролі не збігаються",
   "passwords_do_not_match": "Паролі не збігаються.",
   "placeholder_email": "you@example.com",
