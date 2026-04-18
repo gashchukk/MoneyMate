@@ -27,6 +27,35 @@ export function numericCodeToIso(code: number | undefined | null): string | null
   return null;
 }
 
+/** ISO 4217 alphabetic (e.g. from NBU `cc`) → numeric code for API / accounts. */
+export function isoAlphacodeToNumeric(iso: string): number | null {
+  const c = iso.trim().toUpperCase();
+  for (const [numStr, label] of Object.entries(ISO_NUMERIC)) {
+    if (label === c) return Number(numStr);
+  }
+  return null;
+}
+
+/**
+ * Convert `amount` expressed in `fromNumeric` into `toNumeric` using NBU cross-rates via UAH.
+ */
+export function convertAmountBetweenCurrencies(
+  amount: number,
+  fromNumeric: number,
+  toNumeric: number,
+  allRates: Record<string, number>,
+): number | null {
+  const from = numericCodeToIso(fromNumeric);
+  const to = numericCodeToIso(toNumeric);
+  if (!from || !to) return null;
+  if (from === to) return amount;
+  const rFrom = from === 'UAH' ? 1 : allRates[from];
+  const rTo = to === 'UAH' ? 1 : allRates[to];
+  if (rFrom == null || rTo == null || rFrom <= 0 || rTo <= 0) return null;
+  const uah = from === 'UAH' ? amount : amount * rFrom;
+  return to === 'UAH' ? uah : uah / rTo;
+}
+
 /**
  * Convert an amount from `currencyCode` (ISO 4217 numeric) into `systemCurrency` (NBU cc).
  * Uses NBU rates: foreign = UAH per 1 unit; UAH = 1.

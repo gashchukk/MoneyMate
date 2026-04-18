@@ -164,6 +164,8 @@
   "category_already_exists": "A category with this name already exists.",
   "invalid_amount": "Invalid amount",
   "please_enter_positive_number": "Please enter a positive number.",
+  "transaction_amount_currency": "Amount is in",
+  "rates_unavailable_conversion": "Rates unavailable for this conversion. Choose your account's currency or try again later.",
   "please_select_account": "Please select an account.",
   "source_destination_must_differ": "Source and destination must differ.",
   "missing_fields": "Missing fields",

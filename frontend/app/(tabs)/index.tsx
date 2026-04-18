@@ -20,9 +20,14 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
+  CURRENCY_NAMES,
   currencySymbol,
   currencyName,
 } from '@/constants/brand';
+import { convertAmountBetweenCurrencies, isoAlphacodeToNumeric } from '@/utils/convertToSystemCurrency';
+
+/** Base list for amount currency picker (extended in component with account + system currencies). */
+const MANUAL_TX_CURRENCY_CODES = Object.keys(CURRENCY_NAMES).map((k) => Number(k));
 
 type TxMode = 'deposit' | 'withdrawal' | 'transfer';
 
@@ -109,6 +114,9 @@ export default function TransactionsScreen() {
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** ISO 4217 numeric — currency the user is typing the amount in (converted to each account on save). */
+  const [inputCurrencyCode, setInputCurrencyCode] = useState(980);
+  const lastAccountIdForInputCurrency = useRef<string | null>(null);
 
   // Custom category creation (local session only — no backend persistence)
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -136,6 +144,16 @@ export default function TransactionsScreen() {
     [accounts],
   );
 
+  const txCurrencyPickerCodes = useMemo(() => {
+    const s = new Set(MANUAL_TX_CURRENCY_CODES);
+    manualEntryAccounts.forEach((a) => {
+      if (a.currency_code != null) s.add(a.currency_code);
+    });
+    const sn = isoAlphacodeToNumeric(currency);
+    if (sn != null) s.add(sn);
+    return Array.from(s).sort((a, b) => a - b);
+  }, [manualEntryAccounts, currency]);
+
   useEffect(() => {
     if (!showModal || manualEntryAccounts.length === 0) return;
     const hasMain = manualEntryAccounts.some((a) => String(a.id) === accountId);
@@ -156,6 +174,23 @@ export default function TransactionsScreen() {
       setToAccountId(String(others[0].id));
     }
   }, [showModal, txMode, manualEntryAccounts, accountId, toAccountId]);
+
+  // Default amount currency: system currency when it matches the selected account, else account currency.
+  useEffect(() => {
+    if (!showModal) {
+      lastAccountIdForInputCurrency.current = null;
+      return;
+    }
+    const acc = manualEntryAccounts.find((a) => String(a.id) === accountId);
+    if (!acc) return;
+    const accCc = acc.currency_code ?? 980;
+    const sysNum = isoAlphacodeToNumeric(currency);
+    const preferred = sysNum != null && sysNum === accCc ? sysNum : accCc;
+    if (lastAccountIdForInputCurrency.current !== accountId) {
+      setInputCurrencyCode(preferred);
+      lastAccountIdForInputCurrency.current = accountId;
+    }
+  }, [showModal, accountId, currency, manualEntryAccounts]);
 
   // ── Transfer detection ─────────────────────────────────────────────────────
   const detectPotentialTransfers = useCallback((txs: Transaction[]) => {
@@ -252,24 +287,98 @@ export default function TransactionsScreen() {
     setSaving(true);
     try {
       const txTime = Math.floor(date.getTime() / 1000);
-      const base = { time: txTime, mcc: 0, currency_code: null, category };
+
+      const toAccountCurrencyAmount = (accId: string, signedParsed: number) => {
+        const acc = accounts.find((a) => String(a.id) === accId);
+        if (!acc) return null;
+        const accCc = acc.currency_code ?? 980;
+        const mag = Math.abs(signedParsed);
+        const conv =
+          inputCurrencyCode === accCc
+            ? mag
+            : convertAmountBetweenCurrencies(mag, inputCurrencyCode, accCc, allRates);
+        if (conv == null) return null;
+        return signedParsed < 0 ? -conv : conv;
+      };
 
       if (txMode === 'deposit') {
+        const amt = toAccountCurrencyAmount(accountId, parsedAmount);
+        if (amt == null) {
+          Alert.alert(t('error'), t('rates_unavailable_conversion'));
+          return;
+        }
+        const acc = accounts.find((a) => String(a.id) === accountId)!;
+        const accCc = acc.currency_code ?? 980;
         await apiFetch('/transactions/manual', {
           method: 'POST',
-          body: JSON.stringify({ ...base, description: description || t('deposit'), amount: parsedAmount, account_id: parseInt(accountId) }),
+          body: JSON.stringify({
+            time: txTime,
+            mcc: 0,
+            currency_code: accCc,
+            category,
+            description: description || t('deposit'),
+            amount: amt,
+            account_id: parseInt(accountId, 10),
+          }),
         });
       } else if (txMode === 'withdrawal') {
+        const amt = toAccountCurrencyAmount(accountId, -parsedAmount);
+        if (amt == null) {
+          Alert.alert(t('error'), t('rates_unavailable_conversion'));
+          return;
+        }
+        const acc = accounts.find((a) => String(a.id) === accountId)!;
+        const accCc = acc.currency_code ?? 980;
         await apiFetch('/transactions/manual', {
           method: 'POST',
-          body: JSON.stringify({ ...base, description: description || t('withdrawal'), amount: -parsedAmount, account_id: parseInt(accountId) }),
+          body: JSON.stringify({
+            time: txTime,
+            mcc: 0,
+            currency_code: accCc,
+            category,
+            description: description || t('withdrawal'),
+            amount: amt,
+            account_id: parseInt(accountId, 10),
+          }),
         });
       } else {
-        const fromName = accounts.find(a => String(a.id) === accountId)?.name ?? 'account';
-        const toName = accounts.find(a => String(a.id) === toAccountId)?.name ?? 'account';
+        const fromName = accounts.find((a) => String(a.id) === accountId)?.name ?? 'account';
+        const toName = accounts.find((a) => String(a.id) === toAccountId)?.name ?? 'account';
+        const outAmt = toAccountCurrencyAmount(accountId, -parsedAmount);
+        const inAmt = toAccountCurrencyAmount(toAccountId, parsedAmount);
+        if (outAmt == null || inAmt == null) {
+          Alert.alert(t('error'), t('rates_unavailable_conversion'));
+          return;
+        }
+        const fromAcc = accounts.find((a) => String(a.id) === accountId)!;
+        const toAcc = accounts.find((a) => String(a.id) === toAccountId)!;
+        const fromCc = fromAcc.currency_code ?? 980;
+        const toCc = toAcc.currency_code ?? 980;
         await Promise.all([
-          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `${t('transfer')} → ${toName}`, amount: -parsedAmount, account_id: parseInt(accountId), category: 'Transfer' }) }),
-          apiFetch('/transactions/manual', { method: 'POST', body: JSON.stringify({ ...base, description: description || `${t('transfer')} ← ${fromName}`, amount: parsedAmount, account_id: parseInt(toAccountId), category: 'Transfer' }) }),
+          apiFetch('/transactions/manual', {
+            method: 'POST',
+            body: JSON.stringify({
+              time: txTime,
+              mcc: 0,
+              currency_code: fromCc,
+              category: 'Transfer',
+              description: description || `${t('transfer')} → ${toName}`,
+              amount: outAmt,
+              account_id: parseInt(accountId, 10),
+            }),
+          }),
+          apiFetch('/transactions/manual', {
+            method: 'POST',
+            body: JSON.stringify({
+              time: txTime,
+              mcc: 0,
+              currency_code: toCc,
+              category: 'Transfer',
+              description: description || `${t('transfer')} ← ${fromName}`,
+              amount: inAmt,
+              account_id: parseInt(toAccountId, 10),
+            }),
+          }),
         ]);
       }
 
@@ -542,7 +651,24 @@ export default function TransactionsScreen() {
                 />
               )}
 
-              {/* Amount */}
+              {/* Amount + currency (input defaults to system currency when it matches account) */}
+              <Text style={styles.modalLabel}>{t('transaction_amount_currency')}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.currencyChipScroll}>
+                {txCurrencyPickerCodes.map((code) => (
+                  <TouchableOpacity
+                    key={code}
+                    style={[
+                      styles.currencyChip,
+                      inputCurrencyCode === code && { backgroundColor: activeModeConfig.color, borderColor: activeModeConfig.color },
+                    ]}
+                    onPress={() => setInputCurrencyCode(code)}
+                  >
+                    <Text style={[styles.currencyChipText, inputCurrencyCode === code && { color: '#fff' }]}>
+                      {currencyName(code)} {currencySymbol(code)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
               <View style={[styles.amountRow, { borderColor: activeModeConfig.color + '60' }]}>
                 <Text style={[styles.amountSign, { color: activeModeConfig.color }]}>
                   {txMode === 'deposit' ? '+' : txMode === 'withdrawal' ? '−' : '↔'}
@@ -555,6 +681,9 @@ export default function TransactionsScreen() {
                   value={amount}
                   onChangeText={setAmount}
                 />
+                <Text style={[styles.amountCurrencySuffix, { color: activeModeConfig.color }]}>
+                  {currencyName(inputCurrencyCode)}
+                </Text>
               </View>
 
               {/* Description */}
@@ -775,9 +904,21 @@ const styles = StyleSheet.create({
   modeLabel: { fontSize: 11, fontWeight: '700', color: '#bbb', letterSpacing: 0.3, textTransform: 'uppercase' },
   modeHint: { fontSize: 12, fontWeight: '500', marginBottom: 20, textAlign: 'center', opacity: 0.8 },
 
-  amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, paddingHorizontal: 16, marginBottom: 20, backgroundColor: '#fafafa' },
+  currencyChipScroll: { marginBottom: 10, maxHeight: 44 },
+  currencyChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#ddd',
+    marginRight: 8,
+    backgroundColor: '#fafafa',
+  },
+  currencyChipText: { fontSize: 13, fontWeight: '600', color: '#444' },
+  amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, marginBottom: 20, backgroundColor: '#fafafa' },
   amountSign: { fontSize: 30, fontWeight: '300', marginRight: 6, width: 28, textAlign: 'center' },
   amountInput: { flex: 1, fontSize: 36, fontWeight: '800', paddingVertical: 14 },
+  amountCurrencySuffix: { fontSize: 14, fontWeight: '700', marginLeft: 4, minWidth: 40, textAlign: 'right' },
 
   modalLabel: { fontSize: 12, fontWeight: '700', color: '#888', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
   modalInput: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },

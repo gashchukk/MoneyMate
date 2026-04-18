@@ -164,6 +164,8 @@
   "category_already_exists": "Категорія з такою назвою вже існує.",
   "invalid_amount": "Невірна сума",
   "please_enter_positive_number": "Введіть позитивне число.",
+  "transaction_amount_currency": "Сума в",
+  "rates_unavailable_conversion": "Немає курсу для цієї конверсії. Оберіть валюту рахунку або спробуйте пізніше.",
   "please_select_account": "Оберіть рахунок.",
   "source_destination_must_differ": "Джерело та призначення мають відрізнятися.",
   "missing_fields": "Відсутні поля",
