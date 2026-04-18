@@ -14,20 +14,17 @@ import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI1
 import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
 import { useNbuRates } from '@/hooks/useNbuRates';
 import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
-import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { systemCurrencySymbol, CURRENCY_FLAGS } from '@/constants/displayCurrencies';
+import SystemCurrencyPickerModal from '@/components/SystemCurrencyPickerModal';
 import {
   BRAND,
   DEFAULT_CATEGORIES,
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
-  CURRENCY_NAMES,
   currencySymbol,
   currencyName,
 } from '@/constants/brand';
 import { convertAmountBetweenCurrencies, isoAlphacodeToNumeric } from '@/utils/convertToSystemCurrency';
-
-/** Base list for amount currency picker (extended in component with account + system currencies). */
-const MANUAL_TX_CURRENCY_CODES = Object.keys(CURRENCY_NAMES).map((k) => Number(k));
 
 type TxMode = 'deposit' | 'withdrawal' | 'transfer';
 
@@ -74,7 +71,7 @@ const TX_MODES: { key: TxMode; label: string; icon: string; color: string }[] = 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TransactionsScreen() {
   const { language, currency } = useAppSettings();
-  const { allRates } = useNbuRates();
+  const { allRates, allRatesList } = useNbuRates();
   const { t } = useTranslation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -114,9 +111,9 @@ export default function TransactionsScreen() {
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** ISO 4217 numeric — currency the user is typing the amount in (converted to each account on save). */
-  const [inputCurrencyCode, setInputCurrencyCode] = useState(980);
-  const lastAccountIdForInputCurrency = useRef<string | null>(null);
+  /** ISO alphabetic (NBU cc) — currency the user is entering the amount in; defaults from Settings system currency. */
+  const [inputCurrencyCc, setInputCurrencyCc] = useState('UAH');
+  const [showTxCurrencyPicker, setShowTxCurrencyPicker] = useState(false);
 
   // Custom category creation (local session only — no backend persistence)
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -144,15 +141,14 @@ export default function TransactionsScreen() {
     [accounts],
   );
 
-  const txCurrencyPickerCodes = useMemo(() => {
-    const s = new Set(MANUAL_TX_CURRENCY_CODES);
-    manualEntryAccounts.forEach((a) => {
-      if (a.currency_code != null) s.add(a.currency_code);
-    });
-    const sn = isoAlphacodeToNumeric(currency);
-    if (sn != null) s.add(sn);
-    return Array.from(s).sort((a, b) => a - b);
-  }, [manualEntryAccounts, currency]);
+  /** New transaction amount defaults to the same currency as Settings → system currency. */
+  useEffect(() => {
+    if (!showModal) {
+      setShowTxCurrencyPicker(false);
+      return;
+    }
+    setInputCurrencyCc(currency);
+  }, [showModal, currency]);
 
   useEffect(() => {
     if (!showModal || manualEntryAccounts.length === 0) return;
@@ -174,23 +170,6 @@ export default function TransactionsScreen() {
       setToAccountId(String(others[0].id));
     }
   }, [showModal, txMode, manualEntryAccounts, accountId, toAccountId]);
-
-  // Default amount currency: system currency when it matches the selected account, else account currency.
-  useEffect(() => {
-    if (!showModal) {
-      lastAccountIdForInputCurrency.current = null;
-      return;
-    }
-    const acc = manualEntryAccounts.find((a) => String(a.id) === accountId);
-    if (!acc) return;
-    const accCc = acc.currency_code ?? 980;
-    const sysNum = isoAlphacodeToNumeric(currency);
-    const preferred = sysNum != null && sysNum === accCc ? sysNum : accCc;
-    if (lastAccountIdForInputCurrency.current !== accountId) {
-      setInputCurrencyCode(preferred);
-      lastAccountIdForInputCurrency.current = accountId;
-    }
-  }, [showModal, accountId, currency, manualEntryAccounts]);
 
   // ── Transfer detection ─────────────────────────────────────────────────────
   const detectPotentialTransfers = useCallback((txs: Transaction[]) => {
@@ -286,6 +265,12 @@ export default function TransactionsScreen() {
 
     setSaving(true);
     try {
+      const inputNum = isoAlphacodeToNumeric(inputCurrencyCc);
+      if (inputNum == null) {
+        Alert.alert(t('error'), t('transaction_currency_not_supported'));
+        return;
+      }
+
       const txTime = Math.floor(date.getTime() / 1000);
 
       const toAccountCurrencyAmount = (accId: string, signedParsed: number) => {
@@ -294,9 +279,9 @@ export default function TransactionsScreen() {
         const accCc = acc.currency_code ?? 980;
         const mag = Math.abs(signedParsed);
         const conv =
-          inputCurrencyCode === accCc
+          inputNum === accCc
             ? mag
-            : convertAmountBetweenCurrencies(mag, inputCurrencyCode, accCc, allRates);
+            : convertAmountBetweenCurrencies(mag, inputNum, accCc, allRates);
         if (conv == null) return null;
         return signedParsed < 0 ? -conv : conv;
       };
@@ -651,24 +636,8 @@ export default function TransactionsScreen() {
                 />
               )}
 
-              {/* Amount + currency (input defaults to system currency when it matches account) */}
-              <Text style={styles.modalLabel}>{t('transaction_amount_currency')}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.currencyChipScroll}>
-                {txCurrencyPickerCodes.map((code) => (
-                  <TouchableOpacity
-                    key={code}
-                    style={[
-                      styles.currencyChip,
-                      inputCurrencyCode === code && { backgroundColor: activeModeConfig.color, borderColor: activeModeConfig.color },
-                    ]}
-                    onPress={() => setInputCurrencyCode(code)}
-                  >
-                    <Text style={[styles.currencyChipText, inputCurrencyCode === code && { color: '#fff' }]}>
-                      {currencyName(code)} {currencySymbol(code)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {/* Amount + currency (same NBU picker as Settings; defaults to system currency) */}
+              <Text style={styles.modalLabel}>{t('amount')}</Text>
               <View style={[styles.amountRow, { borderColor: activeModeConfig.color + '60' }]}>
                 <Text style={[styles.amountSign, { color: activeModeConfig.color }]}>
                   {txMode === 'deposit' ? '+' : txMode === 'withdrawal' ? '−' : '↔'}
@@ -681,9 +650,15 @@ export default function TransactionsScreen() {
                   value={amount}
                   onChangeText={setAmount}
                 />
-                <Text style={[styles.amountCurrencySuffix, { color: activeModeConfig.color }]}>
-                  {currencyName(inputCurrencyCode)}
-                </Text>
+                <TouchableOpacity
+                  style={[styles.amountCurrencyBtn, { borderColor: activeModeConfig.color + '50' }]}
+                  onPress={() => setShowTxCurrencyPicker(true)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.amountCurrencyBtnFlag}>{CURRENCY_FLAGS[inputCurrencyCc] ?? '🏳️'}</Text>
+                  <Text style={[styles.amountCurrencyBtnCode, { color: activeModeConfig.color }]}>{inputCurrencyCc}</Text>
+                  <Text style={[styles.amountCurrencyBtnChevron, { color: activeModeConfig.color }]}>›</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Description */}
@@ -812,6 +787,16 @@ export default function TransactionsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SystemCurrencyPickerModal
+        visible={showTxCurrencyPicker}
+        onClose={() => setShowTxCurrencyPicker(false)}
+        rates={allRatesList}
+        selectedCode={inputCurrencyCc}
+        onSelect={setInputCurrencyCc}
+        titleKey="transaction_currency_sheet_title"
+        subtitleKey="transaction_currency_sheet_sub"
+      />
     </View>
   );
 }
@@ -904,21 +889,23 @@ const styles = StyleSheet.create({
   modeLabel: { fontSize: 11, fontWeight: '700', color: '#bbb', letterSpacing: 0.3, textTransform: 'uppercase' },
   modeHint: { fontSize: 12, fontWeight: '500', marginBottom: 20, textAlign: 'center', opacity: 0.8 },
 
-  currencyChipScroll: { marginBottom: 10, maxHeight: 44 },
-  currencyChip: {
-    paddingHorizontal: 14,
+  amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, paddingHorizontal: 8, marginBottom: 20, backgroundColor: '#fafafa' },
+  amountSign: { fontSize: 30, fontWeight: '300', marginRight: 4, width: 28, textAlign: 'center' },
+  amountInput: { flex: 1, fontSize: 36, fontWeight: '800', paddingVertical: 12, paddingHorizontal: 4 },
+  amountCurrencyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: '#ddd',
-    marginRight: 8,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#fff',
+    maxWidth: 120,
   },
-  currencyChipText: { fontSize: 13, fontWeight: '600', color: '#444' },
-  amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, paddingHorizontal: 12, marginBottom: 20, backgroundColor: '#fafafa' },
-  amountSign: { fontSize: 30, fontWeight: '300', marginRight: 6, width: 28, textAlign: 'center' },
-  amountInput: { flex: 1, fontSize: 36, fontWeight: '800', paddingVertical: 14 },
-  amountCurrencySuffix: { fontSize: 14, fontWeight: '700', marginLeft: 4, minWidth: 40, textAlign: 'right' },
+  amountCurrencyBtnFlag: { fontSize: 18 },
+  amountCurrencyBtnCode: { fontSize: 14, fontWeight: '800' },
+  amountCurrencyBtnChevron: { fontSize: 18, fontWeight: '300', marginLeft: 2 },
 
   modalLabel: { fontSize: 12, fontWeight: '700', color: '#888', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
   modalInput: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },

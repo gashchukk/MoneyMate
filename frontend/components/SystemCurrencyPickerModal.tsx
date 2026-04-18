@@ -13,6 +13,9 @@ type Props = {
   rates: NBURate[];
   selectedCode: string;
   onSelect: (cc: string) => void;
+  /** i18n keys for sheet title/subtitle (defaults: system currency copy). */
+  titleKey?: string;
+  subtitleKey?: string;
 };
 
 export default function SystemCurrencyPickerModal({
@@ -21,6 +24,8 @@ export default function SystemCurrencyPickerModal({
   rates,
   selectedCode,
   onSelect,
+  titleKey = 'choose_system_currency_title',
+  subtitleKey = 'choose_system_currency_sub',
 }: Props) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -63,8 +68,8 @@ export default function SystemCurrencyPickerModal({
         <Pressable style={styles.backdrop} onPress={handleClose} />
         <View style={[styles.sheet, styles.pickerSheet]}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>{t('choose_system_currency_title')}</Text>
-          <Text style={styles.sheetSubtitle}>{t('choose_system_currency_sub')}</Text>
+          <Text style={styles.sheetTitle}>{t(titleKey)}</Text>
+          <Text style={styles.sheetSubtitle}>{t(subtitleKey)}</Text>
 
           <TextInput
             style={styles.search}
