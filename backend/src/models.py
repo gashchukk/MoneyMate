@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Index, Integer, String, Float, ForeignKey, Text, JSON, Boolean
+from sqlalchemy import Column, Index, Integer, String, Float, ForeignKey, Text, JSON, Boolean, UniqueConstraint
 from src.database import Base
 
 
@@ -33,7 +33,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
-    external_tx_id = Column(String, unique=True, nullable=True)
+    external_tx_id = Column(String, nullable=True)
     time = Column(Integer, nullable=False, index=True)
     description = Column(String)
     mcc = Column(Integer, nullable=True)
@@ -45,6 +45,11 @@ class Transaction(Base):
 
     __table_args__ = (
         Index("ix_transactions_user_time", "user_id", "time"),
+        UniqueConstraint(
+            "account_id",
+            "external_tx_id",
+            name="uq_transactions_account_external_tx_id",
+        ),
     )
 
 

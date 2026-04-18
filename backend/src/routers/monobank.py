@@ -152,7 +152,9 @@ async def mono_webhook(user_id: int, request: Request, db: Session = Depends(get
         for tx in stmt_resp.json():
             amount = tx.get("amount", 0) / 100
             category = smart_categorize(tx.get("mcc"), amount, tx.get("description"))
-            existing_tx = db.query(models.Transaction).filter_by(external_tx_id=tx["id"]).first()
+            existing_tx = db.query(models.Transaction).filter_by(
+                external_tx_id=tx["id"], account_id=acc.id
+            ).first()
             if existing_tx:
                 continue
             db.add(models.Transaction(
@@ -346,10 +348,16 @@ def mono_sync_transactions(
             continue
 
         mono_txs = resp.json()
+        seen_tx_ids: set[str] = set()
 
         for tx in mono_txs:
+            tx_id = tx["id"]
+            if tx_id in seen_tx_ids:
+                continue
+            seen_tx_ids.add(tx_id)
+
             existing = db.query(models.Transaction).filter_by(
-                external_tx_id=tx["id"], account_id=acc.id
+                external_tx_id=tx_id, account_id=acc.id
             ).first()
             if existing:
                 continue
@@ -359,7 +367,7 @@ def mono_sync_transactions(
             db.add(models.Transaction(
                 user_id=user_id,
                 account_id=acc.id,
-                external_tx_id=tx["id"],
+                external_tx_id=tx_id,
                 time=int(tx["time"]),
                 description=tx.get("description"),
                 mcc=tx.get("mcc"),
