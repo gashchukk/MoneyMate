@@ -12,6 +12,7 @@ logging.basicConfig(
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -30,6 +31,19 @@ try:
     Base.metadata.create_all(bind=engine)
 except Exception as _e:
     logging.warning("create_all skipped: %s", _e)
+
+# Add Sign in with Apple column on existing databases (idempotent).
+try:
+    with engine.begin() as _conn:
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub VARCHAR"))
+        _conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_apple_sub "
+                "ON users (apple_sub) WHERE apple_sub IS NOT NULL"
+            )
+        )
+except Exception as _e:
+    logging.warning("users.apple_sub migration skipped: %s", _e)
 
 # ── One-time data fix: MCC-based "Transfer" → re-categorise via current mapping
 # Transactions auto-set to Transfer via the old MCC mapping (4829, 6529-6540,

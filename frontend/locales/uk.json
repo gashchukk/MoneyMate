@@ -241,6 +241,8 @@
   "please_log_in_continue": "Будь ласка, увійдіть, щоб продовжити.",
   "something_went_wrong": "Щось пішло не так.",
   "google_login_failed": "Помилка входу через Google",
+  "apple_login_failed": "Помилка входу через Apple",
+  "apple_auth_not_deployed": "На сервері ще не увімкнено Sign in with Apple. Опублікуйте останню версію бекенду (POST /auth/apple) на ваш API.",
   "password_mismatch": "Паролі не збігаються",
   "passwords_do_not_match": "Паролі не збігаються.",
   "placeholder_email": "you@example.com",

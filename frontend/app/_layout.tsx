@@ -1,10 +1,11 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
 import { LogBox } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 LogBox.ignoreLogs([
   'Sending `onAnimatedValueUpdate` with no listeners registered.',
@@ -14,30 +15,14 @@ LogBox.ignoreLogs([
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppProvider } from '@/components/AppContext';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        const token = await SecureStore.getItemAsync('access_token');
-        router.replace(token ? '/(tabs)' : '/auth');
-      } catch {
-        router.replace('/auth');
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <AppProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen name="account/[id]" options={{ headerShown: false }} />

@@ -16,7 +16,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str
     created_at: int
 
     model_config = {"from_attributes": True}
@@ -142,6 +142,10 @@ class TransactionResponse(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     id_token: str
+
+
+class AppleAuthRequest(BaseModel):
+    identity_token: str
 
 
 # ---------- CHANGE PASSWORD ----------

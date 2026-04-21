@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bohdanhashchuk.moneymate",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -32,6 +33,7 @@
       "output": "static"
     },
     "plugins": [
+      "expo-apple-authentication",
       [
         "expo-camera",
         {

@@ -2,10 +2,14 @@ import os
 import time
 import random
 import logging
+import hashlib
 import smtplib
 from email.mime.text import MIMEText
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
+import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import PyJWTError
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
@@ -47,8 +51,37 @@ def _send_reset_email(to_email: str, code: str) -> None:
         raise HTTPException(500, f"Failed to send reset email: {e}")
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID_WEB", "")
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or "com.bohdanhashchuk.moneymate"
+APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+APPLE_ISSUER = "https://appleid.apple.com"
+
+_apple_jwks_client: PyJWKClient | None = None
 
 router = APIRouter(tags=["auth"])
+
+
+def _apple_jwks_client() -> PyJWKClient:
+    global _apple_jwks_client
+    if _apple_jwks_client is None:
+        _apple_jwks_client = PyJWKClient(APPLE_JWKS_URL)
+    return _apple_jwks_client
+
+
+def _verify_apple_identity_token(raw_token: str) -> dict:
+    signing_key = _apple_jwks_client().get_signing_key_from_jwt(raw_token)
+    return jwt.decode(
+        raw_token,
+        signing_key.key,
+        algorithms=["RS256"],
+        audience=APPLE_CLIENT_ID,
+        issuer=APPLE_ISSUER,
+    )
+
+
+def _placeholder_email_for_apple_sub(sub: str) -> str:
+    """RFC 2606 documentation domain; not used for outbound mail."""
+    h = hashlib.sha256(sub.encode("utf-8")).hexdigest()[:40]
+    return f"moneymate-{h}@example.com"
 
 
 def _create_default_account(db: Session, user_id: int) -> None:
@@ -141,6 +174,65 @@ def google_auth(request: Request, body: schemas.GoogleAuthRequest, db: Session =
         db.commit()
         db.refresh(user)
         _create_default_account(db, user.id)
+
+    return {
+        "access_token": create_access_token(user.id),
+        "refresh_token": create_refresh_token(user.id),
+        "token_type": "bearer",
+    }
+
+
+@router.post("/auth/apple", response_model=schemas.TokenResponse)
+@limiter.limit("10/minute")
+def apple_auth(request: Request, body: schemas.AppleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        claims = _verify_apple_identity_token(body.identity_token)
+    except PyJWTError as e:
+        raise HTTPException(401, f"Invalid Apple token: {e}")
+
+    sub = claims.get("sub")
+    if not sub:
+        raise HTTPException(400, "No subject returned from Apple")
+
+    email = claims.get("email")
+    if isinstance(email, str):
+        email = email.strip().lower() or None
+
+    user = db.query(models.User).filter_by(apple_sub=sub).first()
+    if user:
+        return {
+            "access_token": create_access_token(user.id),
+            "refresh_token": create_refresh_token(user.id),
+            "token_type": "bearer",
+        }
+
+    if email:
+        existing = db.query(models.User).filter_by(email=email).first()
+        if existing:
+            if existing.apple_sub and existing.apple_sub != sub:
+                raise HTTPException(409, "This email is already linked to another Apple ID")
+            existing.apple_sub = sub
+            db.commit()
+            return {
+                "access_token": create_access_token(existing.id),
+                "refresh_token": create_refresh_token(existing.id),
+                "token_type": "bearer",
+            }
+
+    email_to_store = email or _placeholder_email_for_apple_sub(sub)
+    if db.query(models.User).filter_by(email=email_to_store).first():
+        raise HTTPException(500, "Could not allocate account email; try again")
+
+    user = models.User(
+        email=email_to_store,
+        password_hash="",
+        apple_sub=sub,
+        created_at=int(time.time()),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    _create_default_account(db, user.id)
 
     return {
         "access_token": create_access_token(user.id),

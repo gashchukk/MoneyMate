@@ -5,6 +5,7 @@ ecdsa
 sqlalchemy
 pydantic[email]
 PyJWT
+cryptography
 google-cloud-vision>=3.4.0
 google-auth
 bcrypt

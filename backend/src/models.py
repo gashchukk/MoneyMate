@@ -8,6 +8,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    # Stable Apple user id from Sign in with Apple (identity token "sub"); required for re-login when email is absent from token.
+    apple_sub = Column(String, unique=True, index=True, nullable=True)
     created_at = Column(Integer, nullable=False)
     mono_integration_token = Column(String, nullable=True)
 

@@ -3,7 +3,9 @@ import { router } from 'expo-router';
 import Constants from 'expo-constants';
 
 const extra = Constants.expoConfig?.extra ?? {};
-export const API_BASE_URL: string = extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? '';
+const rawBase = (extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? '') as string;
+/** Trailing slashes break paths like `/auth/apple` → `//auth/apple` (404 on some hosts). */
+export const API_BASE_URL: string = rawBase.replace(/\/+$/, '');
 
 export class SessionExpiredError extends Error {
   constructor() {

@@ -241,6 +241,8 @@
   "please_log_in_continue": "Please log in to continue.",
   "something_went_wrong": "Something went wrong.",
   "google_login_failed": "Google login failed",
+  "apple_login_failed": "Apple login failed",
+  "apple_auth_not_deployed": "The server does not have Sign in with Apple yet. Deploy the latest backend (POST /auth/apple) to your API URL.",
   "password_mismatch": "Password mismatch",
   "passwords_do_not_match": "Passwords do not match.",
   "placeholder_email": "you@example.com",

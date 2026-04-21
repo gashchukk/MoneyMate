@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { BRAND, BRAND_LIGHT, BRAND_MID } from '@/constants/brand';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 
@@ -79,6 +80,8 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
@@ -95,6 +98,60 @@ export default function AuthScreen() {
   const tabAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (Platform.OS !== "ios") return;
+    AppleAuthentication.isAvailableAsync().then((ok) => {
+      if (!cancelled) setAppleAvailable(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleAppleSignIn = async () => {
+    setAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const identityToken = credential.identityToken;
+      if (!identityToken) throw new Error("No identity token returned from Apple.");
+
+      const res = await fetch(`${API_BASE_URL}/auth/apple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity_token: identityToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error(t("apple_auth_not_deployed"));
+        }
+        const detail = (data as { detail?: unknown }).detail;
+        let msg = "Apple login failed";
+        if (typeof detail === "string") msg = detail;
+        else if (Array.isArray(detail))
+          msg = detail.map((d) => (typeof d === "object" && d && "msg" in d ? String((d as { msg: string }).msg) : JSON.stringify(d))).join("; ");
+        throw new Error(msg);
+      }
+
+      await SecureStore.setItemAsync("access_token", data.access_token);
+      await SecureStore.setItemAsync("refresh_token", data.refresh_token);
+      router.replace("/(tabs)");
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string };
+      if (err?.code === "ERR_REQUEST_CANCELED") return;
+      if (String(err?.message ?? e).includes("ERR_REQUEST_CANCELED")) return;
+      Alert.alert(t("apple_login_failed"), err?.message ?? String(e));
+    } finally {
+      setAppleLoading(false);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
@@ -386,11 +443,34 @@ export default function AuthScreen() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Google */}
+            {appleAvailable && (
+              <View style={styles.appleBtnWrap}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={14}
+                  style={styles.appleBtn}
+                  onPress={() => {
+                    if (appleLoading || googleLoading) return;
+                    void handleAppleSignIn();
+                  }}
+                />
+                {appleLoading ? (
+                  <View style={styles.appleLoadingOverlay} pointerEvents="none">
+                    <ActivityIndicator color="#fff" />
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {/* Google — placed after Sign in with Apple per Apple HIG */}
             <TouchableOpacity
-              style={[styles.googleBtn, googleLoading && styles.submitBtnDisabled]}
+              style={[
+                styles.googleBtn,
+                (googleLoading || appleLoading) && styles.submitBtnDisabled,
+              ]}
               onPress={handleGoogleSignIn}
-              disabled={googleLoading}
+              disabled={googleLoading || appleLoading}
               activeOpacity={0.85}
             >
               {googleLoading ? (
@@ -755,6 +835,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: TEXT,
+  },
+  appleBtnWrap: {
+    position: "relative",
+    width: "100%",
+    height: 48,
+    marginBottom: 12,
+  },
+  appleBtn: {
+    width: "100%",
+    height: 48,
+  },
+  appleLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 14,
   },
 
   // Footer
