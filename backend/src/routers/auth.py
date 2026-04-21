@@ -55,20 +55,20 @@ APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or "com.bohdanhashchuk.moneymate"
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 APPLE_ISSUER = "https://appleid.apple.com"
 
-_apple_jwks_client: PyJWKClient | None = None
+_cached_apple_jwks: PyJWKClient | None = None
 
 router = APIRouter(tags=["auth"])
 
 
-def _apple_jwks_client() -> PyJWKClient:
-    global _apple_jwks_client
-    if _apple_jwks_client is None:
-        _apple_jwks_client = PyJWKClient(APPLE_JWKS_URL)
-    return _apple_jwks_client
+def _get_apple_jwks_client() -> PyJWKClient:
+    global _cached_apple_jwks
+    if _cached_apple_jwks is None:
+        _cached_apple_jwks = PyJWKClient(APPLE_JWKS_URL)
+    return _cached_apple_jwks
 
 
 def _verify_apple_identity_token(raw_token: str) -> dict:
-    signing_key = _apple_jwks_client().get_signing_key_from_jwt(raw_token)
+    signing_key = _get_apple_jwks_client().get_signing_key_from_jwt(raw_token)
     return jwt.decode(
         raw_token,
         signing_key.key,
@@ -189,6 +189,13 @@ def apple_auth(request: Request, body: schemas.AppleAuthRequest, db: Session = D
         claims = _verify_apple_identity_token(body.identity_token)
     except PyJWTError as e:
         raise HTTPException(401, f"Invalid Apple token: {e}")
+    except Exception as e:
+        # PyJWKClient fetches https://appleid.apple.com/auth/keys — network/DNS errors are not PyJWTError.
+        logger.exception("Apple identity token verification failed: %s", e)
+        raise HTTPException(
+            502,
+            "Could not verify Sign in with Apple (Apple keys unreachable). Try again in a moment.",
+        )
 
     sub = claims.get("sub")
     if not sub:
