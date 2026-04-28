@@ -7,7 +7,6 @@ import ecdsa
 
 KEY_ID = os.getenv("MONOBANK_KEY_ID")
 
-# Support key via env var (for Railway/cloud) or file path (for local dev)
 PRIVATE_KEY_PEM = os.getenv("MONOBANK_PRIVATE_KEY", "").replace("\\n", "\n") or None
 if not PRIVATE_KEY_PEM:
     _default_key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "private.key")

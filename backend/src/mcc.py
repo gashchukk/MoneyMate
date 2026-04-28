@@ -21,9 +21,7 @@ def mcc_short_description(mcc: int | None) -> dict:
     return MCC_MAP.get(str(mcc).zfill(4), {}) or {}
 
 
-# Module-level lookup built from the full mcc.json dataset (1 088 codes).
-# Large contiguous ISO blocks are handled as range checks in mcc_to_category();
-# everything else is resolved here.
+
 _MCC_CATEGORY_MAP: dict[int, str] = {
     # ── Agriculture / farming ─────────────────────────────────────────────────
     742: "Other", 743: "Other", 744: "Other", 763: "Other", 780: "Other",
@@ -237,7 +235,6 @@ def mcc_to_category(mcc: int | None) -> str:
     if mcc is None:
         return "Other"
 
-    # Fast-path for large contiguous ISO blocks
     if 3000 <= mcc <= 3302: return "Transport"    # Airlines
     if 3351 <= mcc <= 3441: return "Transport"    # Car rentals
     if 3501 <= mcc <= 3838: return "Housing"      # Hotels & resorts
@@ -250,9 +247,6 @@ def mcc_to_category(mcc: int | None) -> str:
 
 
 # ── Description-based income classification ───────────────────────────────────
-# Monobank reuses the same transfer MCCs (6529-6540, 4829, 6611) for salary,
-# P2P, top-ups, freelance payments, etc.  Amount sign + description keywords
-# let us split these into meaningful income categories automatically.
 
 _TRANSFER_MCCS: frozenset[int] = frozenset({
     4829, 6529, 6530, 6531, 6532, 6533, 6534,
@@ -299,7 +293,6 @@ def smart_categorize(
     """
     desc = description or ""
 
-    # Non-transfer MCCs are unambiguous — delegate to the standard lookup.
     if mcc is not None and mcc not in _TRANSFER_MCCS:
         return mcc_to_category(mcc)
 
@@ -311,10 +304,8 @@ def smart_categorize(
         if _INVESTMENT_RE.search(desc): return "Investment"
         if _REFUND_RE.search(desc):     return "Refund"
         if _GIFT_RE.search(desc):       return "Gift"
-        # Positive transfer with no recognisable keyword → leave as Other so
-        # the user can decide (salary from unknown employer, misc deposits, etc.)
         return "Other"
 
     # ── Expense / neutral transactions ───────────────────────────────────────
     if _REFUND_RE.search(desc):         return "Refund"
-    return "Other"  # P2P send, top-up of another card, etc.
+    return "Other" 

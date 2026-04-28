@@ -8,9 +8,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set")
 
-# NullPool: no persistent connections — required for serverless (Vercel).
-# Each request opens and closes its own connection, which works correctly
-# with Supabase's Transaction mode pooler (port 6543).
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,

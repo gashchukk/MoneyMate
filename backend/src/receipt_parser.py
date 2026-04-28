@@ -1,4 +1,3 @@
-# receipt_parser.py
 import os
 import json
 import time

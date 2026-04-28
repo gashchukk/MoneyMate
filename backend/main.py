@@ -26,13 +26,11 @@ from src.routers.monobank import router as monobank_router
 from src.routers.receipts import router as receipts_router
 from src.routers.mcc import router as mcc_router
 
-# Create any missing tables (idempotent). Errors are non-fatal on serverless.
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as _e:
     logging.warning("create_all skipped: %s", _e)
 
-# Add Sign in with Apple column on existing databases (idempotent).
 try:
     with engine.begin() as _conn:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub VARCHAR"))
@@ -45,11 +43,6 @@ try:
 except Exception as _e:
     logging.warning("users.apple_sub migration skipped: %s", _e)
 
-# ── One-time data fix: MCC-based "Transfer" → re-categorise via current mapping
-# Transactions auto-set to Transfer via the old MCC mapping (4829, 6529-6540,
-# 6611) may include salary, P2P, etc. Re-run mcc_to_category so they get the
-# correct canonical category. Transactions the user manually set to "Transfer"
-# have mcc=NULL or an MCC that still maps to "Other", so they are unaffected.
 try:
     from src.database import SessionLocal
     from src import models as _models
@@ -96,9 +89,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# allow_credentials=True is incompatible with allow_origins=["*"] per the CORS spec.
-# When ALLOWED_ORIGINS is set to specific origins, credentials are enabled.
-# If unset or "*", wildcard is used without credentials (safe for development).
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "")
 if _raw_origins and _raw_origins != "*":
     _allowed_origins = [o.strip() for o in _raw_origins.split(",")]

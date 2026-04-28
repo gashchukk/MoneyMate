@@ -32,7 +32,6 @@ def get_vision_client() -> gvision.ImageAnnotatorClient:
             )
             _vision_client = gvision.ImageAnnotatorClient(credentials=creds)
         else:
-            # Fallback: use GOOGLE_APPLICATION_CREDENTIALS file path (local dev)
             _vision_client = gvision.ImageAnnotatorClient()
     return _vision_client
 

@@ -3,9 +3,7 @@ import type { NBURate } from '@/constants/displayCurrencies';
 
 const NBU_URL = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json';
 
-/**
- * NBU cross-rates (UAH per 1 unit of foreign). Used to show all balances in system currency.
- */
+
 export function useNbuRates() {
   const [allRates, setAllRates] = useState<Record<string, number>>({});
   const [allRatesList, setAllRatesList] = useState<NBURate[]>([]);

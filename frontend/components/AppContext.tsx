@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import '../i18n'; // initialise i18next
+import '../i18n'; 
 import i18n from 'i18next';
 
-/** NBU ISO currency code (e.g. UAH, USD, PLN). */
 export type Currency = string;
 export type Language = 'en' | 'uk';
 
@@ -57,8 +56,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 export const useAppSettings = () => useContext(AppContext);
 
-// Keep the old t() shim so existing callers keep working during migration.
-// New code should use the useTranslation() hook from react-i18next instead.
+
 export const t = (key: string, _lang?: Language): string => {
   return i18n.t(key, { defaultValue: key });
 };

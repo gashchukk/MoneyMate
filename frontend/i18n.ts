@@ -20,7 +20,6 @@ i18n
     },
   });
 
-// Silence the i18next promotional log (added in v23, unrelated to debug mode)
 (i18n as any).logger.log = noop;
 
 export default i18n;

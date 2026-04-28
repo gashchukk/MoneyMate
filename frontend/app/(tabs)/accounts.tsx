@@ -35,8 +35,7 @@ const TYPE_ICON: Record<string, string> = {
 type ChartPeriod = '1W' | '1M' | '3M' | '6M' | '1Y';
 const CHART_PERIODS: ChartPeriod[] = ['1W', '1M', '3M', '6M', '1Y'];
 
-// Generates evenly-spaced date strings (YYYY-MM-DD) for the given period.
-// Capped at ~20 points so we don't fire hundreds of parallel requests.
+
 function getChartDates(period: ChartPeriod): string[] {
   const totalDays = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }[period];
   const maxPoints = { '1W': 7, '1M': 15, '3M': 13, '6M': 13, '1Y': 26 }[period];
@@ -65,22 +64,18 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
-  // Converter
   const [showConverter, setShowConverter] = useState(false);
   const [converterAmount, setConverterAmount] = useState('');
   const [converterFrom, setConverterFrom] = useState('UAH');
 
-  // Currency picker
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
-  // Rate chart
   const [showRateChart, setShowRateChart] = useState(false);
   const [chartCurrency, setChartCurrency] = useState('');
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1M');
   const [chartPoints, setChartPoints] = useState<{ value: number; label: string; date: string }[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
 
-  // Load persisted currency selection on mount
   useEffect(() => {
     SecureStore.getItemAsync(CURRENCIES_STORE_KEY).then(val => {
       if (val) {
@@ -125,7 +120,6 @@ export default function AccountsScreen() {
       );
 
       const points = results.filter((r): r is { value: number; label: string; date: string } => r !== null);
-      // Thin out x-axis labels to ~6 visible, but preserve full date for tooltip
       const labelStep = Math.max(1, Math.floor(points.length / 6));
       setChartPoints(points.map((p, i) => ({ ...p, label: i % labelStep === 0 ? p.date : '' })));
     } catch {
@@ -175,7 +169,6 @@ export default function AccountsScreen() {
     sum + (convertAmountToSystem(personalBalance(acc), acc.currency_code, currency, allRates) ?? 0), 0);
   const hasCreditAccounts = accounts.some(acc => (acc.credit_limit ?? 0) > 0);
 
-  // Converter — UAH first, display currencies, plus system currency if not already listed
   const converterCurrencies = useMemo(() => {
     const fromSelected = ['UAH', ...selectedCurrencies.filter(c => c !== 'UAH')];
     if (!currency || fromSelected.includes(currency)) return fromSelected;
@@ -410,8 +403,6 @@ export default function AccountsScreen() {
                 const pad = Math.max((rawMax - rawMin) * 0.2, rawMax * 0.001);
                 const yMin = Math.max(0, rawMin - pad);
                 const yMax = rawMax + pad;
-                // maxValue must be the visible RANGE (not absolute max),
-                // because gifted-charts positions points as (value - yAxisOffset) / maxValue
                 const yRange = yMax - yMin;
                 const chartW = screenWidth - 100;
                 return (
@@ -510,7 +501,6 @@ export default function AccountsScreen() {
       <Modal visible={showConverter} transparent animationType="slide" onRequestClose={() => setShowConverter(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={styles.overlay}>
-            {/* Backdrop — fills only the space ABOVE the sheet, no overlap */}
             <Pressable style={styles.backdrop} onPress={() => setShowConverter(false)} />
 
             <View style={styles.sheet}>

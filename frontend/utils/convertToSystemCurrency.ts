@@ -1,6 +1,5 @@
 import { CURRENCY_NAMES } from '@/constants/brand';
 
-/** ISO 4217 numeric → alphabetic (extended for common account currencies + NBU). */
 const ISO_NUMERIC: Record<number, string> = {
   ...CURRENCY_NAMES,
   985: 'PLN',
@@ -27,7 +26,6 @@ export function numericCodeToIso(code: number | undefined | null): string | null
   return null;
 }
 
-/** ISO 4217 alphabetic (e.g. from NBU `cc`) → numeric code for API / accounts. */
 export function isoAlphacodeToNumeric(iso: string): number | null {
   const c = iso.trim().toUpperCase();
   for (const [numStr, label] of Object.entries(ISO_NUMERIC)) {
@@ -36,9 +34,7 @@ export function isoAlphacodeToNumeric(iso: string): number | null {
   return null;
 }
 
-/**
- * Convert `amount` expressed in `fromNumeric` into `toNumeric` using NBU cross-rates via UAH.
- */
+
 export function convertAmountBetweenCurrencies(
   amount: number,
   fromNumeric: number,
@@ -56,10 +52,7 @@ export function convertAmountBetweenCurrencies(
   return to === 'UAH' ? uah : uah / rTo;
 }
 
-/**
- * Convert an amount from `currencyCode` (ISO 4217 numeric) into `systemCurrency` (NBU cc).
- * Uses NBU rates: foreign = UAH per 1 unit; UAH = 1.
- */
+
 export function convertAmountToSystem(
   amount: number,
   currencyCode: number,

@@ -6,6 +6,7 @@ legacy/
 __pycache__
 backend/data/gen-lang-client-*.json
 backend/.env
+backend/k6/.env
 .venv
 .vscode
 app.db 

@@ -4,7 +4,6 @@ import Constants from 'expo-constants';
 
 const extra = Constants.expoConfig?.extra ?? {};
 const rawBase = (extra.apiUrl ?? process.env.EXPO_PUBLIC_API_URL ?? '') as string;
-/** Trailing slashes break paths like `/auth/apple` → `//auth/apple` (404 on some hosts). */
 export const API_BASE_URL: string = rawBase.replace(/\/+$/, '');
 
 export class SessionExpiredError extends Error {
@@ -14,7 +13,6 @@ export class SessionExpiredError extends Error {
   }
 }
 
-// Returns new token, null (token truly invalid), or 'network_error' (unreachable)
 async function refreshAccessToken(): Promise<string | null | 'network_error'> {
   const refreshToken = await SecureStore.getItemAsync('refresh_token');
   if (!refreshToken) return null;
@@ -25,13 +23,13 @@ async function refreshAccessToken(): Promise<string | null | 'network_error'> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    if (!res.ok) return null; // server explicitly rejected — token invalid
+    if (!res.ok) return null;
     const data = await res.json();
     await SecureStore.setItemAsync('access_token', data.access_token);
     await SecureStore.setItemAsync('refresh_token', data.refresh_token);
     return data.access_token;
   } catch {
-    return 'network_error'; // fetch threw — backend unreachable, don't clear session
+    return 'network_error';
   }
 }
 

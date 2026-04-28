@@ -69,8 +69,7 @@ export default function ScanScreen() {
     }
   }, [receiptAccounts, selectedAccount]);
 
-  // Fetch accounts when screen is focused
-  // Don't reset to camera if returning from transaction detail (stage === 'result')
+
   useFocusEffect(useCallback(() => {
     apiFetch('/accounts').then(setAccounts).catch(() => {});
     if (stageRef.current !== 'result') {

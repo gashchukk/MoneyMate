@@ -190,7 +190,6 @@ def apple_auth(request: Request, body: schemas.AppleAuthRequest, db: Session = D
     except PyJWTError as e:
         raise HTTPException(401, f"Invalid Apple token: {e}")
     except Exception as e:
-        # PyJWKClient fetches https://appleid.apple.com/auth/keys — network/DNS errors are not PyJWTError.
         logger.exception("Apple identity token verification failed: %s", e)
         raise HTTPException(
             502,

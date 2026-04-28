@@ -14,7 +14,6 @@ from src.rate_limit import limiter
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/mono", tags=["monobank"])
 
-# Set BACKEND_URL in .env so Monobank can reach the webhook, e.g. https://yourserver.com
 _BACKEND_URL = os.getenv("BACKEND_URL", "").rstrip("/")
 
 # Monobank Personal API returns account.type in lowercase (e.g. white, black, platinum).
@@ -268,7 +267,6 @@ async def mono_corp_transaction_webhook(request: Request, db: Session = Depends(
             ))
             log.info("mono_corp_webhook: created new tx %s amount=%s for user %s", tx_id, amount, acc.user_id)
 
-        # Keep account balance in sync from webhook payload
         raw_balance = item.get("balance")
         if raw_balance is not None:
             acc.balance = raw_balance / 100

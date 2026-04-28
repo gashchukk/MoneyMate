@@ -1,4 +1,3 @@
-/** Currencies shown in rate cards & converter; persisted under CURRENCIES_STORE_KEY. */
 export const DEFAULT_CURRENCIES = ['USD', 'EUR'];
 export const CURRENCIES_STORE_KEY = 'selected_display_currencies';
 
@@ -18,7 +17,6 @@ export const CURRENCY_FLAGS: Record<string, string> = {
   ZAR: '🇿🇦', INR: '🇮🇳', NZD: '🇳🇿', CZK2: '🇨🇿',
 };
 
-/** Prefix for amounts when system currency is an ISO code (falls back to code + space). */
 const SYSTEM_SYMBOLS: Record<string, string> = {
   UAH: '₴', USD: '$', EUR: '€', GBP: '£', PLN: 'zł', CZK: 'Kč', CHF: 'CHF ',
   JPY: '¥', CAD: 'C$', AUD: 'A$', SEK: 'kr ', NOK: 'kr ', DKK: 'kr ',

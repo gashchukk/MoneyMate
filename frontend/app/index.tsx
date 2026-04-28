@@ -3,10 +3,6 @@ import { Redirect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 
-/**
- * Single entry: avoids loading (tabs) before we know auth state, which caused
- * 401 → clearSession → /auth loops and a flashing login screen.
- */
 export default function Index() {
   const [dest, setDest] = useState<'tabs' | 'auth' | null>(null);
 

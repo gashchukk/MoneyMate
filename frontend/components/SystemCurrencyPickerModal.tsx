@@ -13,7 +13,6 @@ type Props = {
   rates: NBURate[];
   selectedCode: string;
   onSelect: (cc: string) => void;
-  /** i18n keys for sheet title/subtitle (defaults: system currency copy). */
   titleKey?: string;
   subtitleKey?: string;
 };

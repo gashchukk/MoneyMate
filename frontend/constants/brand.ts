@@ -58,7 +58,6 @@ export const DEFAULT_INCOME_CATEGORIES: { label: string; icon: string; color: st
   { label: 'Other',          icon: '💳', color: '#7f8c8d' },
 ];
 
-// Combined for backward-compat (analytics, category coloring, etc.)
 export const DEFAULT_CATEGORIES = [
   ...DEFAULT_EXPENSE_CATEGORIES,
   ...DEFAULT_INCOME_CATEGORIES.filter(c => !DEFAULT_EXPENSE_CATEGORIES.find(e => e.label === c.label)),

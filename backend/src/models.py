@@ -8,7 +8,6 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    # Stable Apple user id from Sign in with Apple (identity token "sub"); required for re-login when email is absent from token.
     apple_sub = Column(String, unique=True, index=True, nullable=True)
     created_at = Column(Integer, nullable=False)
     mono_integration_token = Column(String, nullable=True)
@@ -73,6 +72,6 @@ class ReceiptImage(Base):
     user_id         = Column(Integer, ForeignKey("users.id"), nullable=False)
     transaction_id  = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     filename        = Column(String, nullable=True)
-    raw_text        = Column(Text, nullable=True)          # full OCR dump
-    parsed_data     = Column(JSON, nullable=True)          # structured JSON
+    raw_text        = Column(Text, nullable=True)
+    parsed_data     = Column(JSON, nullable=True)
     created_at      = Column(Integer, nullable=False)

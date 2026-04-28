@@ -35,13 +35,6 @@ export function displayCategoryLabel(label: string | null | undefined, t: TFunct
   return key ? t(key) : label;
 }
 
-/**
- * Best display label for a transaction's category/MCC.
- * Priority:
- *   1. MCC label from mcc.json in the user's language (full 10k+ coverage)
- *   2. Canonical category translated via i18n keys
- *   3. Raw category string (custom categories)
- */
 export function displayTxCategoryLabel(
   tx: Pick<Transaction, 'category' | 'mcc_label_en' | 'mcc_label_uk'>,
   language: string,
