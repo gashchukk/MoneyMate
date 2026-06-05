@@ -212,9 +212,18 @@ export default function AccountsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{t('accounts')}</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
-            <Text style={styles.addBtnText}>{t('add')}</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.settingsBtn}
+              onPress={() => router.push('/(tabs)/settings')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.settingsBtnIcon}>⚙️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
+              <Text style={styles.addBtnText}>{t('add')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Total Balance */}
@@ -588,6 +597,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#1a1a1a' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingsBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center',
+  },
+  settingsBtnIcon: { fontSize: 18 },
   addBtn: { backgroundColor: BRAND, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 

@@ -1,21 +1,22 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, StatusBar, Modal,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Pressable,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AppDateTimePicker from '@/components/AppDateTimePicker';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useTranslation } from 'react-i18next';
 import { useAppSettings } from '@/components/AppContext';
 import type { Transaction, Account } from '@/types';
 import { BRAND, currencySymbol, CURRENCY_NAMES, DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, CATEGORY_COLORS } from '@/constants/brand';
-import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { systemCurrencySymbol, CURRENCY_FLAGS } from '@/constants/displayCurrencies';
+import SystemCurrencyPickerModal from '@/components/SystemCurrencyPickerModal';
 import { useNbuRates } from '@/hooks/useNbuRates';
-import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
+import { convertAmountToSystem, isoAlphacodeToNumeric, numericCodeToIso } from '@/utils/convertToSystemCurrency';
 import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
-import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import { parseAmountInput, sanitizeAmountInput } from '@/utils/amountInput';
 
 const MCC_CATEGORIES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
   grocery:    { label: 'Groceries',   icon: '🛒', color: '#27ae60', bg: '#e8f5e9' },
@@ -49,7 +50,7 @@ export default function TransactionDetailScreen() {
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { language, currency } = useAppSettings();
-  const { allRates } = useNbuRates();
+  const { allRates, allRatesList } = useNbuRates();
 
   const [tx, setTx] = useState<Transaction | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
@@ -63,12 +64,13 @@ export default function TransactionDetailScreen() {
   const [editAmount, setEditAmount] = useState('');
   const [editDateTime, setEditDateTime] = useState(new Date());
   const [editAccountId, setEditAccountId] = useState('');
-  const [editCurrencyCode, setEditCurrencyCode] = useState<number>(980);
+  const [editCurrencyCc, setEditCurrencyCc] = useState('UAH');
   const [editCategory, setEditCategory] = useState<string | null>(null);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
   const [customCatInput, setCustomCatInput] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const [showEditTimePicker, setShowEditTimePicker] = useState(false);
+  const [showEditCurrencyPicker, setShowEditCurrencyPicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -84,7 +86,7 @@ export default function TransactionDetailScreen() {
       setEditAmount(String(Math.abs(found.amount)));
       setEditDateTime(new Date(found.time < 1e10 ? found.time * 1000 : found.time));
       setEditAccountId(String(found.account_id));
-      setEditCurrencyCode(found.currency_code);
+      setEditCurrencyCc(numericCodeToIso(found.currency_code) ?? 'UAH');
       setEditCategory(found.category ?? null);
       setAccounts(accs);
       const acc = accs.find((a: Account) => a.id === found.account_id);
@@ -98,6 +100,19 @@ export default function TransactionDetailScreen() {
   }, [id]);
 
   React.useEffect(() => { fetchData(); }, []);
+
+  const manualEntryAccounts = useMemo(
+    () => accounts.filter(a => a.source !== 'mono'),
+    [accounts],
+  );
+
+  useEffect(() => {
+    if (!showEdit || manualEntryAccounts.length === 0) return;
+    setEditAccountId(prev => {
+      const ok = manualEntryAccounts.some(a => String(a.id) === prev);
+      return ok ? prev : String(manualEntryAccounts[0].id);
+    });
+  }, [showEdit, manualEntryAccounts]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = () => {
@@ -126,12 +141,17 @@ export default function TransactionDetailScreen() {
 
   // ── Edit / Save ───────────────────────────────────────────────────────────
   const handleSave = async () => {
-    const parsed = parseFloat(editAmount);
+    const parsed = parseAmountInput(editAmount);
     if (isNaN(parsed) || parsed <= 0) {
       Alert.alert(t('invalid_amount'), t('please_enter_positive_number'));
       return;
     }
     if (!tx) return;
+    const currencyNum = isoAlphacodeToNumeric(editCurrencyCc);
+    if (currencyNum == null) {
+      Alert.alert(t('error'), t('transaction_currency_not_supported'));
+      return;
+    }
     setSaving(true);
     try {
       // Preserve original sign (expense stays negative, income stays positive)
@@ -142,7 +162,7 @@ export default function TransactionDetailScreen() {
           description: editDesc,
           amount: newAmount,
           mcc: tx.mcc,
-          currency_code: editCurrencyCode,
+          currency_code: currencyNum,
           time: Math.floor(editDateTime.getTime() / 1000),
           account_id: parseInt(editAccountId),
           category: editCategory,
@@ -150,6 +170,7 @@ export default function TransactionDetailScreen() {
       });
       setTx(updated);
       setShowEdit(false);
+      setShowEditCurrencyPicker(false);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
       Alert.alert('Error', e.message);
@@ -236,13 +257,44 @@ export default function TransactionDetailScreen() {
       </ScrollView>
 
       {/* ── Edit Modal ── */}
-      <Modal visible={showEdit} animationType="slide" transparent onRequestClose={() => setShowEdit(false)}>
+      <Modal visible={showEdit} animationType="slide" transparent onRequestClose={() => { setShowEdit(false); setShowEditCurrencyPicker(false); }}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.handle} />
             <Text style={styles.modalTitle}>{t('edit_transaction')}</Text>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.formScroll}
+              contentContainerStyle={styles.formContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.modalLabel}>{t('amount')}</Text>
+              <View style={[styles.amountRow, { borderColor: amountColor + '60' }]}>
+                <Text style={[styles.amountSign, { color: amountColor }]}>
+                  {isExpense ? '−' : '+'}
+                </Text>
+                <View style={styles.amountInputWrap}>
+                  <TextInput
+                    style={[styles.amountInput, { color: amountColor }]}
+                    placeholder="0.00"
+                    placeholderTextColor={amountColor + '40'}
+                    keyboardType="decimal-pad"
+                    value={editAmount}
+                    onChangeText={(text) => setEditAmount(sanitizeAmountInput(text))}
+                  />
+                </View>
+                <Pressable
+                  style={[styles.amountCurrencyBtn, { borderColor: amountColor + '50' }]}
+                  onPress={() => setShowEditCurrencyPicker(true)}
+                  hitSlop={8}
+                >
+                  <Text style={styles.amountCurrencyBtnFlag}>{CURRENCY_FLAGS[editCurrencyCc] ?? '🏳️'}</Text>
+                  <Text style={[styles.amountCurrencyBtnCode, { color: amountColor }]}>{editCurrencyCc}</Text>
+                  <Text style={[styles.amountCurrencyBtnChevron, { color: amountColor }]}>›</Text>
+                </Pressable>
+              </View>
+
               <Text style={styles.modalLabel}>{t('description')}</Text>
               <TextInput
                 style={styles.modalInput}
@@ -252,39 +304,29 @@ export default function TransactionDetailScreen() {
                 onChangeText={setEditDesc}
               />
 
-              <Text style={styles.modalLabel}>{t('amount')}</Text>
-              <View style={[styles.amountRow, { borderColor: amountColor + '60' }]}>
-                <Text style={[styles.amountSign, { color: amountColor }]}>
-                  {isExpense ? '−' : '+'}
-                </Text>
-                <TextInput
-                  style={[styles.amountInput, { color: amountColor }]}
-                  placeholder="0.00"
-                  placeholderTextColor={amountColor + '40'}
-                  keyboardType="numeric"
-                  value={editAmount}
-                  onChangeText={setEditAmount}
-                />
-                <Text style={styles.amountCurrency}>
-                  {CURRENCY_NAMES[editCurrencyCode] ?? ''}
-                </Text>
+              <Text style={styles.modalLabel}>{t('date')} / {t('time')}</Text>
+              <View style={styles.dateTimeRow}>
+                <TouchableOpacity
+                  style={[styles.pickerBtn, styles.pickerBtnHalf, showEditDatePicker && styles.pickerBtnActive]}
+                  onPress={() => { setShowEditTimePicker(false); setShowEditDatePicker(v => !v); }}
+                >
+                  <Text style={styles.pickerBtnText} numberOfLines={1}>
+                    {editDateTime.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pickerBtn, styles.pickerBtnHalf, showEditTimePicker && styles.pickerBtnActive]}
+                  onPress={() => { setShowEditDatePicker(false); setShowEditTimePicker(v => !v); }}
+                >
+                  <Text style={styles.pickerBtnText} numberOfLines={1}>
+                    {editDateTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.signNote}>
-                {isExpense ? t('expense_sign_note') : t('income_sign_note')}
-              </Text>
-
-              {/* Date */}
-              <Text style={styles.modalLabel}>{t('date')}</Text>
-              <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditTimePicker(false); setShowEditDatePicker(v => !v); }}>
-                <Text style={styles.pickerBtnText}>
-                  {editDateTime.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}
-                </Text>
-              </TouchableOpacity>
               {showEditDatePicker && (
-                <DateTimePicker
+                <AppDateTimePicker
                   value={editDateTime}
                   mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={(_, selected) => {
                     setShowEditDatePicker(false);
                     if (selected) {
@@ -295,19 +337,10 @@ export default function TransactionDetailScreen() {
                   }}
                 />
               )}
-
-              {/* Time */}
-              <Text style={styles.modalLabel}>{t('time')}</Text>
-              <TouchableOpacity style={styles.pickerBtn} onPress={() => { setShowEditDatePicker(false); setShowEditTimePicker(v => !v); }}>
-                <Text style={styles.pickerBtnText}>
-                  {editDateTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </TouchableOpacity>
               {showEditTimePicker && (
-                <DateTimePicker
+                <AppDateTimePicker
                   value={editDateTime}
                   mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={(_, selected) => {
                     setShowEditTimePicker(false);
                     if (selected) {
@@ -319,42 +352,23 @@ export default function TransactionDetailScreen() {
                 />
               )}
 
-              {/* Account */}
               <Text style={styles.modalLabel}>{t('account')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {accounts.map(acc => (
+                {manualEntryAccounts.map(acc => (
                   <TouchableOpacity
                     key={acc.id}
                     style={[styles.accChip, editAccountId === String(acc.id) && styles.accChipActive]}
                     onPress={() => setEditAccountId(String(acc.id))}
                   >
-                    <Text style={[styles.accChipText, editAccountId === String(acc.id) && styles.accChipTextActive]}>{monoAccountDisplayName(acc)}</Text>
+                    <Text style={[styles.accChipText, editAccountId === String(acc.id) && styles.accChipTextActive]}>{acc.name}</Text>
                     <Text style={[styles.accChipSub, editAccountId === String(acc.id) && styles.accChipSubActive]}>{CURRENCY_NAMES[acc.currency_code] ?? ''}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
 
-              {/* Currency */}
-              <Text style={styles.modalLabel}>{t('currency')}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {Object.entries(CURRENCY_NAMES).map(([code, name]) => {
-                  const numCode = parseInt(code);
-                  return (
-                    <TouchableOpacity
-                      key={code}
-                      style={[styles.accChip, editCurrencyCode === numCode && styles.accChipActive]}
-                      onPress={() => setEditCurrencyCode(numCode)}
-                    >
-                      <Text style={[styles.accChipText, editCurrencyCode === numCode && styles.accChipTextActive]}>{name}</Text>
-                      <Text style={[styles.accChipSub, editCurrencyCode === numCode && styles.accChipSubActive]}>{currencySymbol(numCode)}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
               {/* Category */}
               <Text style={styles.modalLabel}>{t('category')}</Text>
-              <View style={styles.categoryGrid}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
                 {(isExpense ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES).map(c => {
                   const active = editCategory === c.label;
                   return (
@@ -371,7 +385,6 @@ export default function TransactionDetailScreen() {
                   );
                 })}
 
-                {/* Custom category chip (if set and not in defaults) */}
                 {editCategory && !(isExpense ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES).find(c => c.label === editCategory) && (
                   <TouchableOpacity
                     style={[styles.categoryChip, { backgroundColor: BRAND, borderColor: BRAND }]}
@@ -382,14 +395,13 @@ export default function TransactionDetailScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* + Category button */}
                 <TouchableOpacity
                   style={[styles.categoryChip, styles.addCategoryChip]}
                   onPress={() => { setShowCustomCatInput(v => !v); setCustomCatInput(''); }}
                 >
                   <Text style={styles.addCategoryText}>{t('add_category')}</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
 
               {showCustomCatInput && (
                 <View style={styles.customCatRow}>
@@ -421,9 +433,11 @@ export default function TransactionDetailScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+            </ScrollView>
 
+            <View style={styles.modalFooter}>
               <View style={styles.modalBtns}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEdit(false)}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowEdit(false); setShowEditCurrencyPicker(false); }}>
                   <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -434,7 +448,18 @@ export default function TransactionDetailScreen() {
                   {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t('save_changes')}</Text>}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </View>
+
+            <SystemCurrencyPickerModal
+              embedded
+              visible={showEditCurrencyPicker}
+              onClose={() => setShowEditCurrencyPicker(false)}
+              rates={allRatesList}
+              selectedCode={editCurrencyCc}
+              onSelect={setEditCurrencyCc}
+              titleKey="transaction_currency_sheet_title"
+              subtitleKey="transaction_currency_sheet_sub"
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -522,72 +547,87 @@ const styles = StyleSheet.create({
   // Edit modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   modalCard: {
-    backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    padding: 24, paddingBottom: 48, maxHeight: '90%',
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    maxHeight: '92%',
+    overflow: 'hidden',
   },
-  handle: { width: 40, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: '#1a1a1a', marginBottom: 24 },
-  modalLabel: { fontSize: 12, fontWeight: '700', color: '#888', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
+  handle: { width: 36, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginBottom: 8 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', marginBottom: 10 },
+  formScroll: { flexGrow: 0, flexShrink: 1 },
+  formContent: { paddingBottom: 4 },
+  modalFooter: {
+    borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 10, marginTop: 4,
+  },
+  modalLabel: { fontSize: 11, fontWeight: '700', color: '#888', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 6 },
   modalInput: {
     backgroundColor: '#f8f8f8', borderRadius: 12,
-    paddingHorizontal: 16, paddingVertical: 13,
-    fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee', marginBottom: 20,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 14, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee', marginBottom: 10,
   },
   amountRow: {
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 2, borderRadius: 16, paddingHorizontal: 16,
-    marginBottom: 8, backgroundColor: '#fafafa',
+    borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 8,
+    marginBottom: 10, backgroundColor: '#fafafa',
   },
-  amountSign: { fontSize: 30, fontWeight: '300', marginRight: 6, width: 28, textAlign: 'center' },
-  amountInput: { flex: 1, fontSize: 32, fontWeight: '800', paddingVertical: 14 },
-  amountCurrency: { fontSize: 14, fontWeight: '600', color: '#aaa' },
-  signNote: { fontSize: 12, color: '#aaa', marginBottom: 24, marginLeft: 2 },
+  amountSign: { fontSize: 24, fontWeight: '300', marginRight: 2, width: 24, textAlign: 'center', flexShrink: 0 },
+  amountInputWrap: { flex: 1, minWidth: 0, marginRight: 4 },
+  amountInput: { fontSize: 28, fontWeight: '800', paddingVertical: 8, paddingHorizontal: 2, width: '100%' },
+  amountCurrencyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingVertical: 6, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1.5,
+    backgroundColor: '#fff', flexShrink: 0, zIndex: 2,
+  },
+  amountCurrencyBtnFlag: { fontSize: 16 },
+  amountCurrencyBtnCode: { fontSize: 12, fontWeight: '800' },
+  amountCurrencyBtnChevron: { fontSize: 16, fontWeight: '300' },
 
-  pickerBtn: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },
-  pickerBtnText: { fontSize: 15, color: '#1a1a1a' },
+  dateTimeRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  pickerBtn: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: '#eee' },
+  pickerBtnHalf: { flex: 1 },
+  pickerBtnActive: { borderColor: BRAND, backgroundColor: BRAND + '10' },
+  pickerBtnText: { fontSize: 14, color: '#1a1a1a', fontWeight: '500' },
 
-  chipScroll: { marginBottom: 16 },
-  accChip: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#f0f0f0', marginRight: 8, alignItems: 'center', minWidth: 72 },
+  chipScroll: { marginBottom: 10 },
+  accChip: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#f0f0f0', marginRight: 8, alignItems: 'center', minWidth: 68 },
   accChipActive: { backgroundColor: BRAND },
-  accChipText: { fontSize: 13, fontWeight: '700', color: '#444' },
+  accChipText: { fontSize: 12, fontWeight: '700', color: '#444' },
   accChipTextActive: { color: '#fff' },
-  accChipSub: { fontSize: 10, color: '#999', marginTop: 2, fontWeight: '600' },
+  accChipSub: { fontSize: 9, color: '#999', marginTop: 1, fontWeight: '600' },
   accChipSubActive: { color: 'rgba(255,255,255,0.7)' },
 
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   categoryChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#f0f0f0', borderWidth: 1.5, borderColor: '#e0e0e0',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 18,
+    backgroundColor: '#f0f0f0', borderWidth: 1.5, borderColor: '#e0e0e0', marginRight: 8,
   },
-  categoryChipIcon: { fontSize: 14 },
-  categoryChipText: { fontSize: 13, fontWeight: '600', color: '#444' },
+  categoryChipIcon: { fontSize: 13 },
+  categoryChipText: { fontSize: 11, fontWeight: '600', color: '#444' },
   addCategoryChip: { backgroundColor: '#fff', borderColor: BRAND, borderStyle: 'dashed' },
-  addCategoryText: { fontSize: 13, fontWeight: '700', color: BRAND },
+  addCategoryText: { fontSize: 11, fontWeight: '700', color: BRAND },
   customCatRow: {
-    flexDirection: 'row', gap: 8, marginBottom: 20,
+    flexDirection: 'row', gap: 8, marginBottom: 8,
     alignItems: 'center',
   },
   customCatInput: {
-    flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 11,
-    fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee',
+    flex: 1, backgroundColor: '#f8f8f8', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    fontSize: 13, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee',
   },
   customCatConfirm: {
-    backgroundColor: BRAND, borderRadius: 12,
-    paddingHorizontal: 18, paddingVertical: 11,
+    backgroundColor: BRAND, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
   },
-  customCatConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  customCatConfirmText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
-  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  modalBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: {
-    flex: 1, borderRadius: 14, paddingVertical: 15,
+    flex: 1, borderRadius: 12, paddingVertical: 13,
     borderWidth: 1.5, borderColor: '#e0e0e0', alignItems: 'center',
   },
-  cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#888' },
+  cancelBtnText: { fontSize: 14, fontWeight: '700', color: '#888' },
   saveBtn: {
-    flex: 1, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center',
-    shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 4,
+    flex: 1, backgroundColor: BRAND, borderRadius: 12, paddingVertical: 13, alignItems: 'center',
   },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

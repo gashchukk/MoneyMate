@@ -29,8 +29,8 @@ function TabsWithContext() {
       <Tabs.Screen
         name="index"
         options={{
-          title: t('transactions', language),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💳" focused={focused} />,
+          title: t('home', language),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -38,6 +38,12 @@ function TabsWithContext() {
         options={{
           title: t('analytics_title', language),
           tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="budget"
+        options={{
+          href: null,
         }}
       />
       {/* ── Centre scan tab ── */}
@@ -56,6 +62,13 @@ function TabsWithContext() {
         }}
       />
       <Tabs.Screen
+        name="transactions"
+        options={{
+          title: t('transactions', language),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💳" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="accounts"
         options={{
           title: t('accounts', language),
@@ -65,8 +78,7 @@ function TabsWithContext() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: t('settings', language),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} />,
+          href: null,
         }}
       />
     </Tabs>

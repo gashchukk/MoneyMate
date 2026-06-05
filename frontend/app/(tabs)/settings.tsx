@@ -14,6 +14,7 @@ import { systemCurrencySymbol } from '@/constants/displayCurrencies';
 import { useNbuRates } from '@/hooks/useNbuRates';
 import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
 import SystemCurrencyPickerModal from '@/components/SystemCurrencyPickerModal';
+import ExportDataModal from '@/components/ExportDataModal';
 import type { NBURate } from '@/constants/displayCurrencies';
 import QRCode from 'react-native-qrcode-svg';
 import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
@@ -53,6 +54,7 @@ export default function SettingsScreen() {
 
   const [allRatesList, setAllRatesList] = useState<NBURate[]>([]);
   const [showSystemCurrencyPicker, setShowSystemCurrencyPicker] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // ── Load Monobank status ──────────────────────────────────────────────────
   const loadMonoStatus = async () => {
@@ -304,7 +306,11 @@ export default function SettingsScreen() {
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       {/* ── Header ── */}
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.backBtn}>{t('back')}</Text>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('settings')}</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* ── System Currency ── */}
@@ -363,6 +369,21 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* ── Data ── */}
+      <Text style={styles.sectionTitle}>{t('data_section')}</Text>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.actionRow} onPress={() => setShowExportModal(true)}>
+          <View style={styles.actionLeft}>
+            <Text style={styles.actionIcon}>📤</Text>
+            <View>
+              <Text style={styles.actionLabel}>{t('export_data')}</Text>
+              <Text style={styles.actionHint}>{t('export_data_hint')}</Text>
+            </View>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Account ── */}
@@ -644,6 +665,11 @@ export default function SettingsScreen() {
       selectedCode={currency}
       onSelect={cc => setCurrency(cc)}
     />
+
+    <ExportDataModal
+      visible={showExportModal}
+      onClose={() => setShowExportModal(false)}
+    />
     </>
   );
 }
@@ -658,8 +684,11 @@ const styles = StyleSheet.create({
     paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
+  backBtn: { fontSize: 16, fontWeight: '600', color: BRAND, minWidth: 60 },
   headerTitle: { fontSize: 26, fontWeight: '800', color: '#1a1a1a' },
+  headerSpacer: { minWidth: 60 },
 
   sectionTitle: {
     fontSize: 12, fontWeight: '700', color: '#888',

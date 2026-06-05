@@ -15,6 +15,8 @@ type Props = {
   onSelect: (cc: string) => void;
   titleKey?: string;
   subtitleKey?: string;
+  /** Render inside a parent modal instead of opening a nested RN Modal (iOS-safe). */
+  embedded?: boolean;
 };
 
 export default function SystemCurrencyPickerModal({
@@ -25,6 +27,7 @@ export default function SystemCurrencyPickerModal({
   onSelect,
   titleKey = 'choose_system_currency_title',
   subtitleKey = 'choose_system_currency_sub',
+  embedded = false,
 }: Props) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -61,54 +64,69 @@ export default function SystemCurrencyPickerModal({
     handleClose();
   };
 
+  if (!visible) return null;
+
+  const sheet = (
+    <View style={styles.overlay}>
+      <Pressable style={styles.backdrop} onPress={handleClose} />
+      <View style={[styles.sheet, styles.pickerSheet]}>
+        <View style={styles.handle} />
+        <Text style={styles.sheetTitle}>{t(titleKey)}</Text>
+        <Text style={styles.sheetSubtitle}>{t(subtitleKey)}</Text>
+
+        <TextInput
+          style={styles.search}
+          value={search}
+          onChangeText={setSearch}
+          placeholder={t('search_currency_placeholder')}
+          placeholderTextColor="#bbb"
+          clearButtonMode="while-editing"
+        />
+
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.cc}
+          style={styles.list}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => {
+            const active = selectedCode === item.cc;
+            const rateLabel = item.cc === 'UAH' ? '1.00 ₴' : `₴${item.rate.toFixed(2)}`;
+            return (
+              <TouchableOpacity style={styles.row} onPress={() => pick(item.cc)} activeOpacity={0.7}>
+                <Text style={styles.flag}>{CURRENCY_FLAGS[item.cc] ?? '🏳️'}</Text>
+                <View style={styles.info}>
+                  <Text style={styles.code}>{item.cc}</Text>
+                  <Text style={styles.name} numberOfLines={1}>{item.txt}</Text>
+                </View>
+                <Text style={styles.rate}>{rateLabel}</Text>
+                <View style={[styles.radio, active && styles.radioActive]}>
+                  {active && <View style={styles.radioDot} />}
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+    </View>
+  );
+
+  if (embedded) {
+    return <View style={styles.embeddedRoot}>{sheet}</View>;
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={handleClose} />
-        <View style={[styles.sheet, styles.pickerSheet]}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>{t(titleKey)}</Text>
-          <Text style={styles.sheetSubtitle}>{t(subtitleKey)}</Text>
-
-          <TextInput
-            style={styles.search}
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t('search_currency_placeholder')}
-            placeholderTextColor="#bbb"
-            clearButtonMode="while-editing"
-          />
-
-          <FlatList
-            data={filtered}
-            keyExtractor={item => item.cc}
-            style={styles.list}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => {
-              const active = selectedCode === item.cc;
-              const rateLabel = item.cc === 'UAH' ? '1.00 ₴' : `₴${item.rate.toFixed(2)}`;
-              return (
-                <TouchableOpacity style={styles.row} onPress={() => pick(item.cc)} activeOpacity={0.7}>
-                  <Text style={styles.flag}>{CURRENCY_FLAGS[item.cc] ?? '🏳️'}</Text>
-                  <View style={styles.info}>
-                    <Text style={styles.code}>{item.cc}</Text>
-                    <Text style={styles.name} numberOfLines={1}>{item.txt}</Text>
-                  </View>
-                  <Text style={styles.rate}>{rateLabel}</Text>
-                  <View style={[styles.radio, active && styles.radioActive]}>
-                    {active && <View style={styles.radioDot} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      </View>
+      {sheet}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  embeddedRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    elevation: 20,
+  },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   backdrop: { flex: 1 },
   sheet: {

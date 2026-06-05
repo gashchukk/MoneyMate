@@ -1,35 +1,37 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, TextInput, ActivityIndicator, Alert, RefreshControl,
-  KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, RefreshControl,
 } from 'react-native';
-import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect, router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { apiFetch, SessionExpiredError } from '@/constants/api';
 import { useAppSettings } from '@/components/AppContext';
-import { useTranslation } from 'react-i18next';
 import type { Transaction, Account } from '@/types';
-import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
-import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import { BRAND, DEFAULT_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES, currencySymbol } from '@/constants/brand';
+import {
+  monthKey,
+  loadBudgetStore,
+  loadBudgetCategoriesConfig,
+  type BudgetStore,
+  type BudgetCategoriesConfig,
+} from '@/constants/budget';
 import { useNbuRates } from '@/hooks/useNbuRates';
 import { convertAmountToSystem } from '@/utils/convertToSystemCurrency';
-import { systemCurrencySymbol, CURRENCY_FLAGS } from '@/constants/displayCurrencies';
-import SystemCurrencyPickerModal from '@/components/SystemCurrencyPickerModal';
-import {
-  BRAND,
-  DEFAULT_CATEGORIES,
-  DEFAULT_EXPENSE_CATEGORIES,
-  DEFAULT_INCOME_CATEGORIES,
-  currencySymbol,
-  currencyName,
-} from '@/constants/brand';
-import { convertAmountBetweenCurrencies, isoAlphacodeToNumeric } from '@/utils/convertToSystemCurrency';
+import { systemCurrencySymbol } from '@/constants/displayCurrencies';
+import { displayCategoryLabel, displayTxCategoryLabel } from '@/utils/categoryI18n';
+import { monoAccountDisplayName } from '@/utils/monoAccountDisplayName';
+import AddTransactionModal from '@/components/AddTransactionModal';
 
-type TxMode = 'deposit' | 'withdrawal' | 'transfer';
+const SOURCE_ICON: Record<string, string> = { mono: '🟡', manual: '✏️', default: '🏦' };
+const TYPE_ICON: Record<string, string> = {
+  black: '🖤', white: '🤍', platinum: '🔘', iron: '⚙️', fop: '🏢',
+  yellow: '🇺🇦', eAid: '🟢', cash: '💵', creditCard: '💳', debitCard: '💳',
+  savings: '🏦', prepaid: '🧾', investments: '📈', loan: '📉', credit: '💰', other: '📦',
+};
 
 const CATEGORY_META: Record<string, { icon: string; color: string }> = Object.fromEntries(
-  DEFAULT_CATEGORIES.map(c => [c.label, { icon: c.icon, color: c.color }])
+  DEFAULT_CATEGORIES.map(c => [c.label, { icon: c.icon, color: c.color }]),
 );
 
 function getCategoryMeta(cat?: string | null): { icon: string; color: string } {
@@ -37,195 +39,83 @@ function getCategoryMeta(cat?: string | null): { icon: string; color: string } {
   return CATEGORY_META[cat] ?? { icon: '🏷️', color: '#888' };
 }
 
+function txAbsInSystem(tx: Transaction, currency: string, allRates: Record<string, number>): number {
+  const c = convertAmountToSystem(Math.abs(tx.amount), tx.currency_code, currency, allRates);
+  return c ?? Math.abs(tx.amount);
+}
 
-const mccColor = (mcc: number | null, category?: string | null): string => {
-  const meta = getCategoryMeta(category);
-  if (category && meta.color !== '#bbb') return meta.color + '18';
-  if (!mcc) return '#f5f5f5';
-  if (mcc >= 5411 && mcc <= 5499) return '#e8f5e9';
-  if (mcc >= 5811 && mcc <= 5814) return '#fff3e0';
-  if (mcc >= 4111 && mcc <= 4131) return '#e3f2fd';
-  if (mcc >= 5912 && mcc <= 5999) return '#fce4ec';
-  return '#f5f5f5';
-};
+function txInSystem(tx: Transaction, currency: string, allRates: Record<string, number>): number {
+  const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+  return c ?? tx.amount;
+}
 
-const mccLabel = (mcc: number | null, category?: string | null): string => {
-  if (category) return getCategoryMeta(category).icon;
-  if (!mcc) return '✏️';
-  if (mcc >= 5411 && mcc <= 5499) return '🛒';
-  if (mcc >= 5811 && mcc <= 5814) return '🍽️';
-  if (mcc >= 4111 && mcc <= 4131) return '🚌';
-  if (mcc >= 5912 && mcc <= 5999) return '💊';
-  return '💳';
-};
+function MiniBarChart({ data, color, sym }: { data: { label: string; value: number }[]; color: string; sym: string }) {
+  const max = data.reduce((m, d) => Math.max(m, Math.abs(d.value)), 1);
+  const fmt = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
+  return (
+    <View style={chartStyles.root}>
+      {data.map((d, i) => (
+        <View key={i} style={chartStyles.barCol}>
+          <Text style={[chartStyles.barValue, { color }]}>
+            {Math.abs(d.value) > 0 ? `${sym}${fmt(Math.abs(d.value))}` : ''}
+          </Text>
+          <View style={chartStyles.barTrack}>
+            <View style={[chartStyles.bar, { height: `${(Math.abs(d.value) / max) * 100}%`, backgroundColor: color }]} />
+          </View>
+          <Text style={chartStyles.barLabel} numberOfLines={1}>{d.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
-const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTH_NAMES_UK = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+const chartStyles = StyleSheet.create({
+  root: { flexDirection: 'row', alignItems: 'flex-end', height: 90, gap: 4 },
+  barCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
+  barValue: { fontSize: 7, fontWeight: '700', marginBottom: 2, textAlign: 'center' },
+  barTrack: { flex: 1, width: '70%', justifyContent: 'flex-end', backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden' },
+  bar: { borderRadius: 4, minHeight: 2 },
+  barLabel: { fontSize: 8, color: '#aaa', marginTop: 4, textAlign: 'center' },
+});
 
-const TX_MODES: { key: TxMode; label: string; icon: string; color: string }[] = [
-  { key: 'deposit',    label: 'Deposit',    icon: '⬇️', color: '#27ae60' },
-  { key: 'withdrawal', label: 'Withdrawal', icon: '⬆️', color: '#c0392b' },
-  { key: 'transfer',   label: 'Transfer',   icon: '↔️', color: '#2980b9' },
-];
+function WidgetHeader({ title, onViewAll }: { title: string; onViewAll: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.widgetHeader}>
+      <Text style={styles.widgetTitle}>{title}</Text>
+      <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Text style={styles.viewAll}>{t('view_all')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
-// ── Component ─────────────────────────────────────────────────────────────────
-export default function TransactionsScreen() {
+export default function HomeScreen() {
+  const { t } = useTranslation();
   const { language, currency } = useAppSettings();
   const { allRates, allRatesList } = useNbuRates();
-  const { t } = useTranslation();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const locale = language === 'uk' ? 'uk-UA' : 'en-GB';
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [budgetStore, setBudgetStore] = useState<BudgetStore>({});
+  const [budgetCategoriesConfig, setBudgetCategoriesConfig] = useState<BudgetCategoriesConfig>({ visible: [], custom: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [potentialTransfers, setPotentialTransfers] = useState<{ cashTx: Transaction; monoTx: Transaction }[]>([]);
-  const [showTransferReview, setShowTransferReview] = useState(false);
-  const [dismissedTransfers, setDismissedTransfers] = useState<Set<string>>(new Set());
 
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-
-  const { scrollToDate } = useLocalSearchParams<{ scrollToDate?: string }>();
-  const scrollRef = useRef<ScrollView>(null);
-  const dayOffsets = useRef<Record<string, number>>({});
-  const pendingScrollDate = useRef<string | null>(null);
-
-  // When a scrollToDate param arrives, switch to that month and queue a scroll
-  useEffect(() => {
-    if (!scrollToDate) return;
-    const d = new Date(scrollToDate);
-    if (isNaN(d.getTime())) return;
-    setYear(d.getFullYear());
-    setMonth(d.getMonth());
-    pendingScrollDate.current = scrollToDate;
-  }, [scrollToDate]);
-
-  // Form state
-  const [txMode, setTxMode] = useState<TxMode>('withdrawal');
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [toAccountId, setToAccountId] = useState('');
-  const [category, setCategory] = useState<string | null>(null);
-  const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [saving, setSaving] = useState(false);
-  /** ISO alphabetic (NBU cc) — currency the user is entering the amount in; defaults from Settings system currency. */
-  const [inputCurrencyCc, setInputCurrencyCc] = useState('UAH');
-  const [showTxCurrencyPicker, setShowTxCurrencyPicker] = useState(false);
-
-  // Custom category creation (local session only — no backend persistence)
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [localCategories, setLocalCategories] = useState<{ label: string; icon: string; color: string }[]>([]);
-
-  const defaultCategories = txMode === 'deposit' ? DEFAULT_INCOME_CATEGORIES : DEFAULT_EXPENSE_CATEGORIES;
-  const allCategories = [...defaultCategories, ...localCategories];
-
-  const resetForm = () => {
-    setDescription('');
-    setAmount('');
-    setAccountId('');
-    setToAccountId('');
-    setCategory(null);
-    setTxMode('withdrawal');
-    setDate(new Date());
-    setShowNewCategory(false);
-    setNewCategoryName('');
-  };
-
-  /** Monobank accounts are synced automatically; manual entry only targets other accounts. */
-  const manualEntryAccounts = useMemo(
-    () => accounts.filter((a) => a.source !== 'mono'),
-    [accounts],
-  );
-
-  /** New transaction amount defaults to the same currency as Settings → system currency. */
-  useEffect(() => {
-    if (!showModal) {
-      setShowTxCurrencyPicker(false);
-      return;
-    }
-    setInputCurrencyCc(currency);
-  }, [showModal, currency]);
-
-  useEffect(() => {
-    if (!showModal || manualEntryAccounts.length === 0) return;
-    const hasMain = manualEntryAccounts.some((a) => String(a.id) === accountId);
-    if (!hasMain) {
-      setAccountId(String(manualEntryAccounts[0].id));
-    }
-  }, [showModal, manualEntryAccounts, accountId]);
-
-  useEffect(() => {
-    if (!showModal || txMode !== 'transfer') return;
-    if (manualEntryAccounts.length < 2) {
-      if (toAccountId) setToAccountId('');
-      return;
-    }
-    const others = manualEntryAccounts.filter((a) => String(a.id) !== accountId);
-    const toOk = others.some((a) => String(a.id) === toAccountId);
-    if (!toOk) {
-      setToAccountId(String(others[0].id));
-    }
-  }, [showModal, txMode, manualEntryAccounts, accountId, toAccountId]);
-
-  // ── Transfer detection ─────────────────────────────────────────────────────
-  const detectPotentialTransfers = useCallback((txs: Transaction[]) => {
-    const THREE_DAYS = 3 * 86400;
-    const cashWithdrawals = txs.filter(tx => tx.amount < 0 && tx.category !== 'Transfer' && tx.source !== 'mono');
-    const monoDeposits    = txs.filter(tx => tx.amount > 0 && tx.category !== 'Transfer' && tx.source === 'mono');
-
-    const pairs: { cashTx: Transaction; monoTx: Transaction }[] = [];
-    const usedMono = new Set<number>();
-    const usedCash = new Set<number>();
-
-    for (const cashTx of cashWithdrawals) {
-      for (const monoTx of monoDeposits) {
-        if (usedMono.has(monoTx.id) || usedCash.has(cashTx.id)) continue;
-        const amountMatch = Math.abs(Math.abs(cashTx.amount) - monoTx.amount) < 1.0;
-        const timeDiff = Math.abs(cashTx.time - monoTx.time);
-        if (amountMatch && timeDiff <= THREE_DAYS) {
-          pairs.push({ cashTx, monoTx });
-          usedMono.add(monoTx.id);
-          usedCash.add(cashTx.id);
-        }
-      }
-    }
-    setPotentialTransfers(pairs);
-  }, []);
-
-  const confirmTransfer = async (cashTx: Transaction, monoTx: Transaction) => {
-    try {
-      await Promise.all([
-        apiFetch(`/transactions/${cashTx.id}`, { method: 'PUT', body: JSON.stringify({ category: 'Transfer' }) }),
-        apiFetch(`/transactions/${monoTx.id}`, { method: 'PUT', body: JSON.stringify({ category: 'Transfer' }) }),
-      ]);
-      setPotentialTransfers(prev => prev.filter(p => p.cashTx.id !== cashTx.id));
-      fetchAll();
-    } catch (e: any) {
-      if (e instanceof SessionExpiredError) return;
-      Alert.alert(t('error'), e.message);
-    }
-  };
-
-  const dismissTransfer = (cashTx: Transaction, monoTx: Transaction) => {
-    const key = `${cashTx.id}-${monoTx.id}`;
-    setDismissedTransfers(prev => new Set([...prev, key]));
-    setPotentialTransfers(prev => prev.filter(p => p.cashTx.id !== cashTx.id));
-  };
-
-  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
-      const [txs, accs] = await Promise.all([
+      const [txs, accs, store, config] = await Promise.all([
         apiFetch('/transactions'),
         apiFetch('/accounts'),
+        loadBudgetStore(),
+        loadBudgetCategoriesConfig(),
       ]);
       setTransactions(txs);
       setAccounts(accs);
-      detectPotentialTransfers(txs);
+      setBudgetStore(store);
+      setBudgetCategoriesConfig(config);
     } catch (e: any) {
       if (e instanceof SessionExpiredError) return;
       Alert.alert(t('error'), e.message);
@@ -237,729 +127,404 @@ export default function TransactionsScreen() {
 
   useFocusEffect(useCallback(() => { fetchAll(); }, [fetchAll]));
 
-  // ── Add custom category (local, session-only) ─────────────────────────────
-  const handleAddCategory = () => {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    if (allCategories.find(c => c.label.toLowerCase() === name.toLowerCase())) {
-      Alert.alert(t('already_exists'), t('category_already_exists'));
-      return;
+  const sym = systemCurrencySymbol(currency);
+  const fmt = (v: number) => `${sym}${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const personalBalance = (acc: Account) => (acc.balance ?? 0) - (acc.credit_limit ?? 0);
+
+  const totalBalance = useMemo(() =>
+    accounts.reduce((sum, acc) =>
+      sum + (convertAmountToSystem(acc.balance ?? 0, acc.currency_code, currency, allRates) ?? 0), 0),
+    [accounts, currency, allRates],
+  );
+
+  const topAccounts = useMemo(() =>
+    [...accounts]
+      .sort((a, b) =>
+        (convertAmountToSystem(b.balance ?? 0, b.currency_code, currency, allRates) ?? 0) -
+        (convertAmountToSystem(a.balance ?? 0, a.currency_code, currency, allRates) ?? 0),
+      )
+      .slice(0, 3),
+    [accounts, currency, allRates],
+  );
+
+  const recentTransactions = useMemo(() =>
+    [...transactions]
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 5),
+    [transactions],
+  );
+
+  const isInternal = (tx: Transaction) => tx.category === 'Transfer' || tx.category === 'Correction';
+
+  const monthStats = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const monthTxs = transactions.filter(tx => {
+      const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+      return d.getFullYear() === y && d.getMonth() === m;
+    });
+    const expenses = monthTxs.filter(tx => tx.amount < 0 && !isInternal(tx));
+    const income = monthTxs.filter(tx => tx.amount > 0 && !isInternal(tx));
+    const totalExpenses = expenses.reduce((s, tx) => s + txAbsInSystem(tx, currency, allRates), 0);
+    const totalIncome = income.reduce((s, tx) => s + Math.max(0, txInSystem(tx, currency, allRates)), 0);
+    const net = totalIncome - totalExpenses;
+
+    const catMap: Record<string, number> = {};
+    expenses.forEach(tx => {
+      const key = tx.category ?? 'Other';
+      catMap[key] = (catMap[key] ?? 0) + txAbsInSystem(tx, currency, allRates);
+    });
+    const topCat = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0];
+
+    return { totalExpenses, totalIncome, net, topCat, txCount: monthTxs.length };
+  }, [transactions, currency, allRates]);
+
+  const monthlyTrend = useMemo(() => {
+    const months: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      months[key] = 0;
     }
-    setLocalCategories(prev => [...prev, { label: name, icon: '🏷️', color: '#888' }]);
-    setCategory(name);
-    setNewCategoryName('');
-    setShowNewCategory(false);
-  };
+    transactions.forEach(tx => {
+      if (tx.amount >= 0 || isInternal(tx)) return;
+      const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (months[key] === undefined) return;
+      months[key] += txAbsInSystem(tx, currency, allRates);
+    });
+    return Object.entries(months).map(([key, value]) => ({
+      label: new Date(key + '-01').toLocaleDateString(locale, { month: 'short' }),
+      value,
+    }));
+  }, [transactions, locale, currency, allRates]);
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
-    const parsedAmount = parseFloat(amount);
-    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert(t('invalid_amount'), t('please_enter_positive_number')); return;
-    }
-    if (!accountId) { Alert.alert(t('missing_fields'), t('please_select_account')); return; }
-    if (txMode === 'transfer') {
-      if (!toAccountId) { Alert.alert(t('missing_fields'), t('please_select_account')); return; }
-      if (accountId === toAccountId) { Alert.alert(t('missing_fields'), t('source_destination_must_differ')); return; }
-    }
+  const monthLabel = new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-    setSaving(true);
-    try {
-      const inputNum = isoAlphacodeToNumeric(inputCurrencyCc);
-      if (inputNum == null) {
-        Alert.alert(t('error'), t('transaction_currency_not_supported'));
-        return;
-      }
+  const budgetCategoryMeta = useMemo(() => {
+    const map = Object.fromEntries(
+      DEFAULT_EXPENSE_CATEGORIES.map(c => [c.label, { icon: c.icon, color: c.color }]),
+    );
+    budgetCategoriesConfig.custom.forEach(c => { map[c.label] = { icon: c.icon, color: c.color }; });
+    return map;
+  }, [budgetCategoriesConfig.custom]);
 
-      const txTime = Math.floor(date.getTime() / 1000);
+  const budgetSummary = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const monthLimits = budgetStore[monthKey(now)] ?? {};
 
-      const toAccountCurrencyAmount = (accId: string, signedParsed: number) => {
-        const acc = accounts.find((a) => String(a.id) === accId);
-        if (!acc) return null;
-        const accCc = acc.currency_code ?? 980;
-        const mag = Math.abs(signedParsed);
-        const conv =
-          inputNum === accCc
-            ? mag
-            : convertAmountBetweenCurrencies(mag, inputNum, accCc, allRates);
-        if (conv == null) return null;
-        return signedParsed < 0 ? -conv : conv;
+    const spentByCat: Record<string, number> = {};
+    transactions.forEach(tx => {
+      const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+      if (d.getFullYear() !== y || d.getMonth() !== m || tx.amount >= 0 || isInternal(tx)) return;
+      const key = tx.category ?? 'Other';
+      spentByCat[key] = (spentByCat[key] ?? 0) + txAbsInSystem(tx, currency, allRates);
+    });
+
+    const rows = budgetCategoriesConfig.visible.map(key => {
+      const meta = budgetCategoryMeta[key] ?? { icon: '🏷️', color: '#888' };
+      return {
+        key,
+        icon: meta.icon,
+        color: meta.color,
+        spent: spentByCat[key] ?? 0,
+        limit: monthLimits[key] ?? null,
       };
+    });
 
-      if (txMode === 'deposit') {
-        const amt = toAccountCurrencyAmount(accountId, parsedAmount);
-        if (amt == null) {
-          Alert.alert(t('error'), t('rates_unavailable_conversion'));
-          return;
-        }
-        const acc = accounts.find((a) => String(a.id) === accountId)!;
-        const accCc = acc.currency_code ?? 980;
-        await apiFetch('/transactions/manual', {
-          method: 'POST',
-          body: JSON.stringify({
-            time: txTime,
-            mcc: 0,
-            currency_code: accCc,
-            category,
-            description: description || t('deposit'),
-            amount: amt,
-            account_id: parseInt(accountId, 10),
-          }),
-        });
-      } else if (txMode === 'withdrawal') {
-        const amt = toAccountCurrencyAmount(accountId, -parsedAmount);
-        if (amt == null) {
-          Alert.alert(t('error'), t('rates_unavailable_conversion'));
-          return;
-        }
-        const acc = accounts.find((a) => String(a.id) === accountId)!;
-        const accCc = acc.currency_code ?? 980;
-        await apiFetch('/transactions/manual', {
-          method: 'POST',
-          body: JSON.stringify({
-            time: txTime,
-            mcc: 0,
-            currency_code: accCc,
-            category,
-            description: description || t('withdrawal'),
-            amount: amt,
-            account_id: parseInt(accountId, 10),
-          }),
-        });
-      } else {
-        const fromName = accounts.find((a) => String(a.id) === accountId)?.name ?? 'account';
-        const toName = accounts.find((a) => String(a.id) === toAccountId)?.name ?? 'account';
-        const outAmt = toAccountCurrencyAmount(accountId, -parsedAmount);
-        const inAmt = toAccountCurrencyAmount(toAccountId, parsedAmount);
-        if (outAmt == null || inAmt == null) {
-          Alert.alert(t('error'), t('rates_unavailable_conversion'));
-          return;
-        }
-        const fromAcc = accounts.find((a) => String(a.id) === accountId)!;
-        const toAcc = accounts.find((a) => String(a.id) === toAccountId)!;
-        const fromCc = fromAcc.currency_code ?? 980;
-        const toCc = toAcc.currency_code ?? 980;
-        await Promise.all([
-          apiFetch('/transactions/manual', {
-            method: 'POST',
-            body: JSON.stringify({
-              time: txTime,
-              mcc: 0,
-              currency_code: fromCc,
-              category: 'Transfer',
-              description: description || `${t('transfer')} → ${toName}`,
-              amount: outAmt,
-              account_id: parseInt(accountId, 10),
-            }),
-          }),
-          apiFetch('/transactions/manual', {
-            method: 'POST',
-            body: JSON.stringify({
-              time: txTime,
-              mcc: 0,
-              currency_code: toCc,
-              category: 'Transfer',
-              description: description || `${t('transfer')} ← ${fromName}`,
-              amount: inAmt,
-              account_id: parseInt(toAccountId, 10),
-            }),
-          }),
-        ]);
-      }
+    const withLimits = rows.filter(r => r.limit != null);
+    const totalBudget = withLimits.reduce((s, r) => s + (r.limit ?? 0), 0);
+    const totalSpent = rows.reduce((s, r) => s + r.spent, 0);
+    const topRows = [...withLimits]
+      .sort((a, b) => (b.spent / (b.limit ?? 1)) - (a.spent / (a.limit ?? 1)))
+      .slice(0, 3);
+    const overCount = withLimits.filter(r => r.spent > (r.limit ?? 0)).length;
 
-      setShowModal(false);
-      resetForm();
-      fetchAll();
-    } catch (e: any) {
-      if (e instanceof SessionExpiredError) return;
-      Alert.alert(t('error'), e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+    return { totalBudget, totalSpent, topRows, overCount, hasLimits: withLimits.length > 0 };
+  }, [transactions, budgetStore, budgetCategoriesConfig.visible, budgetCategoryMeta, currency, allRates]);
 
-  // ── Month nav ──────────────────────────────────────────────────────────────
-  const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); };
-
-  // ── Group ──────────────────────────────────────────────────────────────────
-  const monthTransactions = transactions.filter(tx => {
-    const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-
-  const byDay: Record<string, Transaction[]> = {};
-  monthTransactions.forEach(tx => {
-    const d = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
-    const key = d.toISOString().split('T')[0];
-    if (!byDay[key]) byDay[key] = [];
-    byDay[key].push(tx);
-  });
-  const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
-  sortedDays.forEach(day => byDay[day].sort((a, b) => b.time - a.time));
-  const monthNames = language === 'uk' ? MONTH_NAMES_UK : MONTH_NAMES_EN;
-  const activeModeConfig = TX_MODES.find(m => m.key === txMode)!;
-
-  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
+  if (loading) {
+    return <View style={styles.centered}><ActivityIndicator size="large" color={BRAND} /></View>;
+  }
 
   return (
-    <View style={styles.root}>
-      {/* ── Header ── */}
+    <>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAll(); }} tintColor={BRAND} />
+      }
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('transactions')}</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>{t('home')}</Text>
+          <Text style={styles.headerSub}>{t('home_subtitle')}</Text>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddModal(true)}>
           <Text style={styles.addBtnText}>{t('add')}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Month Switcher ── */}
-      <View style={styles.monthRow}>
-        <View style={styles.monthSide}>
-          <TouchableOpacity
-            style={styles.todayBtn}
-            onPress={() => { setMonth(today.getMonth()); setYear(today.getFullYear()); }}
-          >
-            <Text style={styles.todayBtnText}>{t('today')}</Text>
-          </TouchableOpacity>
+      {/* Balance widget */}
+      <View style={styles.widget}>
+        <WidgetHeader title={t('accounts_overview')} onViewAll={() => router.push('/(tabs)/accounts')} />
+        <View style={styles.balanceHero}>
+          <Text style={styles.balanceLabel}>{t('total_balance')}</Text>
+          <Text style={styles.balanceAmount}>{fmt(totalBalance)}</Text>
+          <Text style={styles.balanceCurrency}>{currency}</Text>
         </View>
-        <TouchableOpacity onPress={prevMonth} style={styles.monthArrow}><Text style={styles.monthArrowText}>‹</Text></TouchableOpacity>
-        <Text style={styles.monthLabel}>{monthNames[month]} {year}</Text>
-        <TouchableOpacity onPress={nextMonth} style={styles.monthArrow}><Text style={styles.monthArrowText}>›</Text></TouchableOpacity>
-        <View style={styles.monthSide} />
+        {topAccounts.length === 0 ? (
+          <Text style={styles.emptyHint}>{t('no_accounts_yet')}</Text>
+        ) : topAccounts.map(acc => {
+          const balSys = convertAmountToSystem(acc.balance ?? 0, acc.currency_code, currency, allRates);
+          return (
+            <TouchableOpacity
+              key={acc.id}
+              style={styles.accountRow}
+              onPress={() => router.push(`/account/${acc.id}`)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.accountIcon}>
+                {TYPE_ICON[acc.type] ?? SOURCE_ICON[acc.source] ?? SOURCE_ICON.default}
+              </Text>
+              <View style={styles.accountMid}>
+                <Text style={styles.accountName} numberOfLines={1}>{monoAccountDisplayName(acc)}</Text>
+                {(acc.credit_limit ?? 0) > 0 && (
+                  <Text style={styles.accountMeta}>
+                    {t('personal')} {fmt(convertAmountToSystem(personalBalance(acc), acc.currency_code, currency, allRates) ?? personalBalance(acc))}
+                  </Text>
+                )}
+              </View>
+              <Text style={[styles.accountBal, (acc.balance ?? 0) < 0 && styles.negative]}>
+                {balSys !== null ? fmt(balSys) : `${currencySymbol(acc.currency_code)}${(acc.balance ?? 0).toFixed(2)}`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* ── Potential transfers banner ── */}
-      {potentialTransfers.length > 0 && (
-        <TouchableOpacity style={styles.transferBanner} onPress={() => setShowTransferReview(true)} activeOpacity={0.8}>
-          <Text style={styles.transferBannerIcon}>↔️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.transferBannerTitle}>{t('possible_transfers_found', { count: potentialTransfers.length })}</Text>
-            <Text style={styles.transferBannerSub}>{t('tap_to_review_transfers')}</Text>
+      {/* Analytics widget */}
+      <View style={styles.widget}>
+        <WidgetHeader title={t('monthly_overview')} onViewAll={() => router.push('/(tabs)/analytics')} />
+        <Text style={styles.periodLabel}>{monthLabel}</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>{t('income')}</Text>
+            <Text style={[styles.statValue, styles.positive]}>{fmt(monthStats.totalIncome)}</Text>
           </View>
-          <Text style={styles.transferBannerArrow}>›</Text>
-        </TouchableOpacity>
-      )}
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>{t('expenses')}</Text>
+            <Text style={[styles.statValue, styles.negative]}>{fmt(monthStats.totalExpenses)}</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>{t('net_balance')}</Text>
+            <Text style={[styles.statValue, monthStats.net >= 0 ? styles.positive : styles.negative]}>
+              {monthStats.net >= 0 ? '+' : '−'}{fmt(monthStats.net)}
+            </Text>
+          </View>
+        </View>
+        {monthStats.topCat && (
+          <View style={styles.topCatRow}>
+            <Text style={styles.topCatLabel}>{t('top_category_label')}</Text>
+            <Text style={styles.topCatValue}>
+              {getCategoryMeta(monthStats.topCat[0]).icon}{' '}
+              {displayCategoryLabel(monthStats.topCat[0], t)} · {fmt(monthStats.topCat[1])}
+            </Text>
+          </View>
+        )}
+        <Text style={styles.chartTitle}>{t('trend_6_months')}</Text>
+        <MiniBarChart data={monthlyTrend} color="#c0392b" sym={sym} />
+        <Text style={styles.txCountHint}>
+          {t('transactions_in_period', { count: monthStats.txCount })}
+        </Text>
+      </View>
 
-      {/* ── Transfer review modal ── */}
-      <Modal visible={showTransferReview} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowTransferReview(false)}>
-        <View style={styles.reviewRoot}>
-          <View style={styles.reviewHeader}>
-            <Text style={styles.reviewTitle}>{t('review_transfers')}</Text>
-            <TouchableOpacity onPress={() => setShowTransferReview(false)}>
-              <Text style={styles.reviewClose}>{t('done')}</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.reviewSub}>{t('merging_marks_both')}</Text>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 14 }}>
-            {potentialTransfers.map(({ cashTx, monoTx }) => {
-              const cashAcc = accounts.find(a => a.id === cashTx.account_id);
-              const monoAcc = accounts.find(a => a.id === monoTx.account_id);
-              const cashConv = convertAmountToSystem(cashTx.amount, cashTx.currency_code, currency, allRates);
-              const monoConv = convertAmountToSystem(monoTx.amount, monoTx.currency_code, currency, allRates);
-              const symCash = cashConv !== null ? systemCurrencySymbol(currency) : currencySymbol(cashTx.currency_code);
-              const symMono = monoConv !== null ? systemCurrencySymbol(currency) : currencySymbol(monoTx.currency_code);
-              const fmtDate = (tx: Transaction) => new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time)
-                .toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'short' });
+      {/* Budget widget */}
+      <View style={styles.widget}>
+        <WidgetHeader title={t('budget')} onViewAll={() => router.push('/(tabs)/budget')} />
+        <Text style={styles.periodLabel}>{monthLabel}</Text>
+        {budgetSummary.hasLimits ? (
+          <>
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>{t('total_budget')}</Text>
+                <Text style={styles.statValue}>{sym}{budgetSummary.totalBudget.toFixed(0)}</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>{t('total_spent')}</Text>
+                <Text style={[styles.statValue, styles.negative]}>{sym}{budgetSummary.totalSpent.toFixed(0)}</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={styles.statLabel}>{t('remaining')}</Text>
+                <Text style={[styles.statValue, budgetSummary.totalBudget - budgetSummary.totalSpent >= 0 ? styles.positive : styles.negative]}>
+                  {budgetSummary.totalBudget - budgetSummary.totalSpent >= 0 ? '' : '−'}
+                  {sym}{Math.abs(budgetSummary.totalBudget - budgetSummary.totalSpent).toFixed(0)}
+                </Text>
+              </View>
+            </View>
+            {budgetSummary.topRows.map(row => {
+              const pct = Math.min((row.spent / row.limit!) * 100, 100);
+              const over = row.spent > row.limit!;
+              const barColor = over ? '#c0392b' : pct >= 80 ? '#e67e22' : row.color;
               return (
-                <View key={`${cashTx.id}-${monoTx.id}`} style={styles.reviewCard}>
-                  <View style={styles.reviewRow}>
-                    <View style={styles.reviewTxBox}>
-                      <Text style={styles.reviewTxLabel}>{t('cash_withdrawal')}</Text>
-                      <Text style={styles.reviewTxAcc}>{cashAcc?.name ?? '—'}</Text>
-                      <Text style={styles.reviewTxDate}>{fmtDate(cashTx)}</Text>
-                      <Text style={[styles.reviewTxAmount, { color: '#c0392b' }]}>{symCash}{Math.abs(cashConv !== null ? cashConv : cashTx.amount).toFixed(2)}</Text>
-                    </View>
-                    <Text style={styles.reviewArrow}>→</Text>
-                    <View style={styles.reviewTxBox}>
-                      <Text style={styles.reviewTxLabel}>{t('mono_deposit')}</Text>
-                      <Text style={styles.reviewTxAcc}>{monoAcc?.name ?? '—'}</Text>
-                      <Text style={styles.reviewTxDate}>{fmtDate(monoTx)}</Text>
-                      <Text style={[styles.reviewTxAmount, { color: '#27ae60' }]}>+{symMono}{(monoConv !== null ? monoConv : monoTx.amount).toFixed(2)}</Text>
-                    </View>
+                <View key={row.key} style={styles.budgetRow}>
+                  <View style={styles.budgetRowTop}>
+                    <Text style={styles.budgetRowIcon}>{row.icon}</Text>
+                    <Text style={styles.budgetRowName} numberOfLines={1}>{displayCategoryLabel(row.key, t)}</Text>
+                    <Text style={[styles.budgetRowAmount, over && styles.negative]}>
+                      {sym}{row.spent.toFixed(0)} / {sym}{row.limit!.toFixed(0)}
+                    </Text>
                   </View>
-                  <View style={styles.reviewBtns}>
-                    <TouchableOpacity style={styles.reviewDismissBtn} onPress={() => dismissTransfer(cashTx, monoTx)}>
-                      <Text style={styles.reviewDismissText}>{t('not_a_transfer')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.reviewConfirmBtn} onPress={() => confirmTransfer(cashTx, monoTx)}>
-                      <Text style={styles.reviewConfirmText}>{t('merge_as_transfer')}</Text>
-                    </TouchableOpacity>
+                  <View style={styles.budgetTrack}>
+                    <View style={[styles.budgetBar, { width: `${pct}%`, backgroundColor: barColor }]} />
                   </View>
                 </View>
               );
             })}
-            {potentialTransfers.length === 0 && (
-              <View style={{ alignItems: 'center', marginTop: 40 }}>
-                <Text style={{ fontSize: 40, marginBottom: 12 }}>✅</Text>
-                <Text style={{ fontSize: 16, color: '#aaa' }}>{t('all_transfers_reviewed')}</Text>
-              </View>
+            {budgetSummary.overCount > 0 && (
+              <Text style={styles.budgetOverHint}>{t('over_budget_count', { count: budgetSummary.overCount })}</Text>
             )}
-          </ScrollView>
-        </View>
-      </Modal>
+          </>
+        ) : (
+          <Text style={styles.emptyHint}>{t('budget_home_empty')}</Text>
+        )}
+      </View>
 
-      {/* ── List ── */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAll(); }} tintColor={BRAND} />}
-      >
-        {sortedDays.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyText}>{t('no_transactions')}</Text>
-          </View>
-        ) : sortedDays.map(day => {
-          const date = new Date(day);
-          const dayLabel = date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-          const dayTotal = byDay[day].reduce((s, tx) => {
-            const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
-            return s + (c ?? tx.amount);
-          }, 0);
+      {/* Recent transactions widget */}
+      <View style={styles.widget}>
+        <WidgetHeader title={t('recent_transactions')} onViewAll={() => router.push('/(tabs)/transactions')} />
+        {recentTransactions.length === 0 ? (
+          <Text style={styles.emptyHint}>{t('no_transactions_yet')}</Text>
+        ) : recentTransactions.map(tx => {
+          const catMeta = getCategoryMeta(tx.category);
+          const conv = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
+          const amt = conv ?? tx.amount;
+          const txSym = conv !== null ? sym : currencySymbol(tx.currency_code);
+          const date = new Date(tx.time < 1e10 ? tx.time * 1000 : tx.time);
+          const dateStr = date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
           return (
-            <View
-              key={day}
-              style={styles.dayBlock}
-              onLayout={(e) => {
-                dayOffsets.current[day] = e.nativeEvent.layout.y;
-                if (pendingScrollDate.current && day === pendingScrollDate.current.slice(0, 10)) {
-                  const offset = e.nativeEvent.layout.y;
-                  pendingScrollDate.current = null;
-                  setTimeout(() => scrollRef.current?.scrollTo({ y: offset, animated: true }), 100);
-                }
-              }}
+            <TouchableOpacity
+              key={tx.id}
+              style={styles.txRow}
+              onPress={() => router.push(`/transaction/${tx.id}`)}
+              activeOpacity={0.7}
             >
-              <View style={styles.dayHeader}>
-                <Text style={styles.dayLabel}>{dayLabel}</Text>
-                <Text style={[styles.dayTotal, dayTotal < 0 ? styles.negative : styles.positive]}>
-                  {systemCurrencySymbol(currency)}{dayTotal.toFixed(2)}
+              <Text style={styles.txIcon}>{catMeta.icon}</Text>
+              <View style={styles.txMid}>
+                <Text style={styles.txDesc} numberOfLines={1}>{tx.description || '—'}</Text>
+                <Text style={styles.txMeta}>
+                  {dateStr}
+                  {tx.category ? ` · ${displayTxCategoryLabel(tx, language, t)}` : ''}
                 </Text>
               </View>
-              {byDay[day].map(tx => {
-                const catMeta = getCategoryMeta(tx.category);
-                return (
-                  <TouchableOpacity
-                    key={tx.id}
-                    style={[styles.txRow, { backgroundColor: mccColor(tx.mcc, tx.category) }]}
-                    onPress={() => router.push(`/transaction/${tx.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.txIcon}>{mccLabel(tx.mcc, tx.category)}</Text>
-                    <View style={styles.txMid}>
-                      <Text style={styles.txDesc} numberOfLines={1}>{tx.description || '—'}</Text>
-                      {/* ── Metadata row: source + category ── */}
-                      <View style={styles.txMeta}>
-                        <Text style={styles.txSource}>{tx.source}</Text>
-                        {tx.category && (
-                          <>
-                            <Text style={styles.txMetaDot}>·</Text>
-                            <View style={[styles.catTag, { backgroundColor: catMeta.color + '22' }]}>
-                              <Text style={[styles.catTagText, { color: catMeta.color }]}>
-                                {catMeta.icon}{' '}
-                                {displayTxCategoryLabel(tx, language, t)}
-                              </Text>
-                            </View>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                    <Text style={[styles.txAmount, tx.amount < 0 ? styles.negative : styles.positive]}>
-                      {(() => {
-                        const c = convertAmountToSystem(tx.amount, tx.currency_code, currency, allRates);
-                        const amt = c ?? tx.amount;
-                        const sym = c !== null ? systemCurrencySymbol(currency) : currencySymbol(tx.currency_code);
-                        const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
-                        return `${sign}${sym}${Math.abs(amt).toFixed(2)}`;
-                      })()}
-                    </Text>
-                    <Text style={styles.txChevron}>›</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+              <Text style={[styles.txAmount, amt < 0 ? styles.negative : styles.positive]}>
+                {amt > 0 ? '+' : amt < 0 ? '−' : ''}{txSym}{Math.abs(amt).toFixed(2)}
+              </Text>
+            </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
+    </ScrollView>
 
-      {/* ── Add Transaction Modal ── */}
-      <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => { setShowModal(false); resetForm(); }}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalCard}>
-            <View style={styles.handle} />
-
-            {/* Mode tabs */}
-            <View style={styles.modeTabs}>
-              {TX_MODES.map(mode => (
-                <TouchableOpacity
-                  key={mode.key}
-                  style={[styles.modeTab, txMode === mode.key && { borderColor: mode.color, backgroundColor: mode.color + '18' }]}
-                  onPress={() => { setTxMode(mode.key); setCategory(null); }}
-                >
-                  <Text style={styles.modeIcon}>{mode.icon}</Text>
-                  <Text style={[styles.modeLabel, txMode === mode.key && { color: mode.color }]}>{t(mode.key)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={[styles.modeHint, { color: activeModeConfig.color }]}>
-              {txMode === 'deposit' ? t('deposit_hint') : txMode === 'withdrawal' ? t('withdrawal_hint') : t('transfer_hint')}
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          
-              {/* Date */}
-              <Text style={styles.modalLabel}>{t('date')}</Text>
-              <View style={styles.dateRow}>
-                <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(v => !v)}>
-                  <Text style={styles.dateText}>
-                    {date.toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dateTodayBtn}
-                  onPress={() => { setDate(new Date()); setShowDatePicker(false); }}
-                >
-                  <Text style={styles.dateTodayBtnText}>{t('today')}</Text>
-                </TouchableOpacity>
-              </View>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={date}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  maximumDate={new Date()}
-                  onChange={(_, selected) => {
-                    setShowDatePicker(false);
-                    if (selected) setDate(selected);
-                  }}
-                />
-              )}
-
-              {/* Amount + currency (same NBU picker as Settings; defaults to system currency) */}
-              <Text style={styles.modalLabel}>{t('amount')}</Text>
-              <View style={[styles.amountRow, { borderColor: activeModeConfig.color + '60' }]}>
-                <Text style={[styles.amountSign, { color: activeModeConfig.color }]}>
-                  {txMode === 'deposit' ? '+' : txMode === 'withdrawal' ? '−' : '↔'}
-                </Text>
-                <TextInput
-                  style={[styles.amountInput, { color: activeModeConfig.color }]}
-                  placeholder="0.00"
-                  placeholderTextColor={activeModeConfig.color + '40'}
-                  keyboardType="numeric"
-                  value={amount}
-                  onChangeText={setAmount}
-                />
-                <TouchableOpacity
-                  style={[styles.amountCurrencyBtn, { borderColor: activeModeConfig.color + '50' }]}
-                  onPress={() => setShowTxCurrencyPicker(true)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.amountCurrencyBtnFlag}>{CURRENCY_FLAGS[inputCurrencyCc] ?? '🏳️'}</Text>
-                  <Text style={[styles.amountCurrencyBtnCode, { color: activeModeConfig.color }]}>{inputCurrencyCc}</Text>
-                  <Text style={[styles.amountCurrencyBtnChevron, { color: activeModeConfig.color }]}>›</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Description */}
-              <Text style={styles.modalLabel}>{t('description_optional')}</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder={txMode === 'deposit' ? t('description_placeholder_deposit') : txMode === 'withdrawal' ? t('description_placeholder_expense') : t('description_placeholder_transfer')}
-                placeholderTextColor="#bbb"
-                value={description}
-                onChangeText={setDescription}
-              />
-
-              {/* Account */}
-              <Text style={styles.modalLabel}>{txMode === 'transfer' ? t('from_account') : t('account')}</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {manualEntryAccounts.map(acc => (
-                  <TouchableOpacity
-                    key={acc.id}
-                    style={[styles.accChip, accountId === String(acc.id) && { backgroundColor: activeModeConfig.color }]}
-                    onPress={() => setAccountId(String(acc.id))}
-                  >
-                    <Text style={[styles.accChipText, accountId === String(acc.id) && { color: '#fff' }]}>{monoAccountDisplayName(acc)}</Text>
-                    <Text style={[styles.accChipCurrency, accountId === String(acc.id) && { color: 'rgba(255,255,255,0.7)' }]}>{currencyName(acc.currency_code)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* To Account (transfer) */}
-              {txMode === 'transfer' && (
-                <>
-                  <View style={styles.transferDivider}>
-                    <View style={styles.transferLine} />
-                    <Text style={styles.transferArrowText}>↓</Text>
-                    <View style={styles.transferLine} />
-                  </View>
-                  <Text style={styles.modalLabel}>{t('to_account')}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                    {manualEntryAccounts.filter(acc => String(acc.id) !== accountId).map(acc => (
-                      <TouchableOpacity
-                        key={acc.id}
-                        style={[styles.accChip, toAccountId === String(acc.id) && { backgroundColor: '#2980b9' }]}
-                        onPress={() => setToAccountId(String(acc.id))}
-                      >
-                        <Text style={[styles.accChipText, toAccountId === String(acc.id) && { color: '#fff' }]}>{monoAccountDisplayName(acc)}</Text>
-                        <Text style={[styles.accChipCurrency, toAccountId === String(acc.id) && { color: 'rgba(255,255,255,0.7)' }]}>{currencyName(acc.currency_code)}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </>
-              )}
-
-              {/* ── Category picker ── */}
-              {txMode !== 'transfer' && (
-                <>
-                  <Text style={styles.modalLabel}>{t('category_optional')}</Text>
-                  <View style={styles.categoryGrid}>
-                    {allCategories.map(cat => (
-                      <TouchableOpacity
-                        key={cat.label}
-                        style={[
-                          styles.catChip,
-                          category === cat.label && { backgroundColor: cat.color, borderColor: cat.color },
-                        ]}
-                        onPress={() => setCategory(category === cat.label ? null : cat.label)}
-                      >
-                        <Text style={styles.catChipIcon}>{cat.icon}</Text>
-                        <Text style={[styles.catChipText, category === cat.label && { color: '#fff' }]}>
-                          {displayCategoryLabel(cat.label, t)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-
-                    {/* ── Create new category ── */}
-                    {!showNewCategory ? (
-                      <TouchableOpacity
-                        style={styles.catChipNew}
-                        onPress={() => setShowNewCategory(true)}
-                      >
-                        <Text style={styles.catChipIcon}>＋</Text>
-                        <Text style={styles.catChipNewText}>{t('new_label')}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.newCatRow}>
-                        <TextInput
-                          style={styles.newCatInput}
-                          placeholder={t('category_name_placeholder')}
-                          placeholderTextColor="#bbb"
-                          value={newCategoryName}
-                          onChangeText={setNewCategoryName}
-                          autoFocus
-                          returnKeyType="done"
-                          onSubmitEditing={handleAddCategory}
-                        />
-                        <TouchableOpacity style={styles.newCatConfirm} onPress={handleAddCategory}>
-                          <Text style={styles.newCatConfirmText}>{t('add_label')}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.newCatCancel} onPress={() => { setShowNewCategory(false); setNewCategoryName(''); }}>
-                          <Text style={styles.newCatCancelText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </>
-              )}
-
-
-              {/* Buttons */}
-              <View style={styles.modalBtns}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setShowModal(false); resetForm(); }}>
-                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveBtn, { backgroundColor: activeModeConfig.color }, saving && { opacity: 0.65 }]}
-                  onPress={handleSubmit}
-                  disabled={saving}
-                >
-                  {saving
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.saveBtnText}>
-                        {txMode === 'deposit' ? t('add_deposit') : txMode === 'withdrawal' ? t('add_expense') : t('add_transfer')}
-                      </Text>
-                  }
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <SystemCurrencyPickerModal
-        visible={showTxCurrencyPicker}
-        onClose={() => setShowTxCurrencyPicker(false)}
-        rates={allRatesList}
-        selectedCode={inputCurrencyCc}
-        onSelect={setInputCurrencyCc}
-        titleKey="transaction_currency_sheet_title"
-        subtitleKey="transaction_currency_sheet_sub"
-      />
-    </View>
+    <AddTransactionModal
+      visible={showAddModal}
+      onClose={() => setShowAddModal(false)}
+      accounts={accounts}
+      allRates={allRates}
+      allRatesList={allRatesList}
+      onSuccess={fetchAll}
+    />
+    </>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFA' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 12, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: '#1a1a1a' },
-  addBtn: { backgroundColor: BRAND, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
+  root: { flex: 1, backgroundColor: '#F6F6F6' },
+  content: { paddingBottom: 32 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F6F6F6' },
+
+  header: {
+    paddingTop: 60, paddingHorizontal: 20, paddingBottom: 8,
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+  },
+  headerLeft: { flex: 1 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#1a1a1a', letterSpacing: -0.5 },
+  headerSub: { fontSize: 14, color: '#888', marginTop: 4 },
+  addBtn: { backgroundColor: BRAND, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
   addBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  monthRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  monthSide: { flex: 1, paddingLeft: 12 },
-  monthArrow: { padding: 10 },
-  monthArrowText: { fontSize: 26, color: BRAND, fontWeight: '300', lineHeight: 28 },
-  monthLabel: { fontSize: 17, fontWeight: '700', color: '#1a1a1a', minWidth: 140, textAlign: 'center' },
-  todayBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1.5, borderColor: BRAND + '50', alignSelf: 'flex-start' },
-  todayBtnText: { fontSize: 12, fontWeight: '700', color: BRAND },
+  widget: {
+    marginHorizontal: 16, marginTop: 12,
+    backgroundColor: '#fff', borderRadius: 20, padding: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
+  },
+  widgetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  widgetTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  viewAll: { fontSize: 13, fontWeight: '600', color: BRAND },
 
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  empty: { alignItems: 'center', marginTop: 80 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 16, color: '#aaa' },
+  balanceHero: { alignItems: 'center', paddingVertical: 8, marginBottom: 8 },
+  balanceLabel: { fontSize: 12, color: '#888', fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' },
+  balanceAmount: { fontSize: 32, fontWeight: '800', color: BRAND, letterSpacing: -1, marginTop: 4 },
+  balanceCurrency: { fontSize: 13, color: '#aaa', fontWeight: '600', marginTop: 2 },
 
-  dayBlock: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  dayLabel: { fontSize: 13, fontWeight: '700', color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 },
-  dayTotal: { fontSize: 14, fontWeight: '700' },
-
-  txRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
-  txIcon: { fontSize: 22, marginRight: 12 },
-  txMid: { flex: 1 },
-  txDesc: { fontSize: 15, fontWeight: '600', color: '#1a1a1a', marginBottom: 3 },
-
-  // ── Metadata row ──
-  txMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  txSource: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 0.4 },
-  txMetaDot: { fontSize: 11, color: '#ccc' },
-  catTag: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  catTagText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
-
-  txAmount: { fontSize: 15, fontWeight: '700' },
-  txChevron: { fontSize: 20, color: '#ccc', marginLeft: 8, fontWeight: '300' },
-  negative: { color: '#c0392b' },
-  positive: { color: '#27ae60' },
-
-  // Transfer banner
-  transferBanner: {
+  accountRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#fff8e1', borderLeftWidth: 4, borderLeftColor: '#f5a623',
-    marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 14,
+    paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f5f5f5',
   },
-  transferBannerIcon: { fontSize: 22 },
-  transferBannerTitle: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
-  transferBannerSub: { fontSize: 12, color: '#888', marginTop: 1 },
-  transferBannerArrow: { fontSize: 22, color: '#f5a623', fontWeight: '700' },
+  accountIcon: { fontSize: 22 },
+  accountMid: { flex: 1 },
+  accountName: { fontSize: 14, fontWeight: '600', color: '#333' },
+  accountMeta: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  accountBal: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
 
-  // Transfer review modal
-  reviewRoot: { flex: 1, backgroundColor: '#F6F6F6' },
-  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 24, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  reviewTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a' },
-  reviewClose: { fontSize: 16, fontWeight: '600', color: BRAND },
-  reviewSub: { fontSize: 13, color: '#888', paddingHorizontal: 20, paddingVertical: 12, lineHeight: 18 },
-  reviewCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#f0f0f0' },
-  reviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  reviewTxBox: { flex: 1, backgroundColor: '#F8F8F8', borderRadius: 12, padding: 12 },
-  reviewTxLabel: { fontSize: 11, fontWeight: '700', color: '#aaa', textTransform: 'uppercase', marginBottom: 4 },
-  reviewTxAcc: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
-  reviewTxDate: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  reviewTxAmount: { fontSize: 16, fontWeight: '800', marginTop: 6 },
-  reviewArrow: { fontSize: 20, color: '#ccc', fontWeight: '700' },
-  reviewBtns: { flexDirection: 'row', gap: 8 },
-  reviewDismissBtn: { flex: 1, borderRadius: 12, paddingVertical: 11, alignItems: 'center', borderWidth: 1.5, borderColor: '#e0e0e0' },
-  reviewDismissText: { fontSize: 13, fontWeight: '600', color: '#888' },
-  reviewConfirmBtn: { flex: 2, borderRadius: 12, paddingVertical: 11, alignItems: 'center', backgroundColor: BRAND },
-  reviewConfirmText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  periodLabel: { fontSize: 13, color: '#888', marginBottom: 12 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  statBox: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, height: 36, backgroundColor: '#f0f0f0' },
+  statLabel: { fontSize: 11, color: '#888', fontWeight: '600', marginBottom: 4 },
+  statValue: { fontSize: 14, fontWeight: '800' },
+  positive: { color: '#27ae60' },
+  negative: { color: '#c0392b' },
 
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: '95%' },
-  handle: { width: 40, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-
-  modeTabs: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  modeTab: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 14, borderWidth: 1.5, borderColor: '#eee', backgroundColor: '#fafafa' },
-  modeIcon: { fontSize: 20, marginBottom: 4 },
-  modeLabel: { fontSize: 11, fontWeight: '700', color: '#bbb', letterSpacing: 0.3, textTransform: 'uppercase' },
-  modeHint: { fontSize: 12, fontWeight: '500', marginBottom: 20, textAlign: 'center', opacity: 0.8 },
-
-  amountRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, paddingHorizontal: 8, marginBottom: 20, backgroundColor: '#fafafa' },
-  amountSign: { fontSize: 30, fontWeight: '300', marginRight: 4, width: 28, textAlign: 'center' },
-  amountInput: { flex: 1, fontSize: 36, fontWeight: '800', paddingVertical: 12, paddingHorizontal: 4 },
-  amountCurrencyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    backgroundColor: '#fff',
-    maxWidth: 120,
+  topCatRow: {
+    backgroundColor: '#f9f9f9', borderRadius: 12, padding: 12, marginBottom: 12,
   },
-  amountCurrencyBtnFlag: { fontSize: 18 },
-  amountCurrencyBtnCode: { fontSize: 14, fontWeight: '800' },
-  amountCurrencyBtnChevron: { fontSize: 18, fontWeight: '300', marginLeft: 2 },
+  topCatLabel: { fontSize: 11, color: '#888', fontWeight: '600', marginBottom: 4 },
+  topCatValue: { fontSize: 14, fontWeight: '600', color: '#333' },
 
-  modalLabel: { fontSize: 12, fontWeight: '700', color: '#888', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
-  modalInput: { backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, color: '#1a1a1a', borderWidth: 1.5, borderColor: '#eee', marginBottom: 20 },
+  chartTitle: { fontSize: 12, color: '#888', fontWeight: '600', marginBottom: 8 },
+  txCountHint: { fontSize: 11, color: '#bbb', textAlign: 'center', marginTop: 8 },
 
-  chipScroll: { marginBottom: 16 },
-  accChip: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#f0f0f0', marginRight: 8, alignItems: 'center', minWidth: 80 },
-  accChipText: { fontSize: 13, fontWeight: '700', color: '#444' },
-  accChipCurrency: { fontSize: 10, color: '#999', marginTop: 2, fontWeight: '600' },
-
-  transferDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4, marginBottom: 16 },
-  transferLine: { flex: 1, height: 1, backgroundColor: '#eee' },
-  transferArrowText: { fontSize: 20, color: '#2980b9', marginHorizontal: 12, fontWeight: '700' },
-
-  // ── Category grid ──
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  catChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 20, backgroundColor: '#f4f4f4',
-    borderWidth: 1.5, borderColor: 'transparent',
+  txRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f5f5f5',
   },
-  catChipIcon: { fontSize: 14 },
-  catChipText: { fontSize: 12, fontWeight: '600', color: '#555' },
+  txIcon: { fontSize: 20 },
+  txMid: { flex: 1 },
+  txDesc: { fontSize: 14, fontWeight: '600', color: '#333' },
+  txMeta: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  txAmount: { fontSize: 14, fontWeight: '700' },
 
-  catChipNew: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1.5,
-    borderColor: '#ddd', borderStyle: 'dashed',
-  },
-  catChipNewText: { fontSize: 12, fontWeight: '600', color: '#aaa' },
+  emptyHint: { fontSize: 13, color: '#bbb', textAlign: 'center', paddingVertical: 16 },
 
-  // New category inline input
-  newCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
-  newCatInput: {
-    flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, color: '#1a1a1a',
-    borderWidth: 1.5, borderColor: '#eee',
-  },
-  newCatConfirm: { backgroundColor: BRAND, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-  newCatConfirmText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  newCatCancel: { padding: 10 },
-  newCatCancelText: { color: '#bbb', fontSize: 16 },
-
-  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  cancelBtn: { flex: 1, borderRadius: 14, paddingVertical: 15, borderWidth: 1.5, borderColor: '#e0e0e0', alignItems: 'center' },
-  cancelBtnText: { fontSize: 15, fontWeight: '700', color: '#888' },
-  saveBtn: { flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
-  dateBtn: { flex: 1, backgroundColor: '#f8f8f8', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, borderWidth: 1.5, borderColor: '#eee' },
-  dateText: { fontSize: 15, color: '#1a1a1a' },
-  dateTodayBtn: { backgroundColor: BRAND + '18', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, borderWidth: 1.5, borderColor: BRAND + '40' },
-  dateTodayBtnText: { fontSize: 13, fontWeight: '700', color: BRAND },
+  budgetRow: { marginBottom: 10 },
+  budgetRowTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  budgetRowIcon: { fontSize: 16 },
+  budgetRowName: { flex: 1, fontSize: 13, fontWeight: '600', color: '#333' },
+  budgetRowAmount: { fontSize: 12, fontWeight: '700', color: '#666' },
+  budgetTrack: { height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' },
+  budgetBar: { height: '100%', borderRadius: 3 },
+  budgetOverHint: { fontSize: 11, color: '#c0392b', fontWeight: '600', textAlign: 'center', marginTop: 4 },
 });

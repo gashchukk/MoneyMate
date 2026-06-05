@@ -400,7 +400,7 @@ export default function ScanScreen() {
 
     const pushToTransactions = (timestamp: number) => {
       const date = new Date(timestamp < 1e10 ? timestamp * 1000 : timestamp).toISOString().slice(0, 10);
-      router.push({ pathname: '/(tabs)', params: { scrollToDate: date } } as any);
+      router.push({ pathname: '/(tabs)/transactions', params: { scrollToDate: date } } as any);
     };
 
     const handleViewTransaction = () => {
@@ -409,7 +409,7 @@ export default function ScanScreen() {
       if (time) {
         pushToTransactions(time);
       } else {
-        router.push({ pathname: '/(tabs)' } as any);
+        router.push({ pathname: '/(tabs)/transactions' } as any);
       }
     };
 
@@ -507,7 +507,7 @@ export default function ScanScreen() {
               onPress={() => {
                 const dupDate = new Date(duplicateTx.time < 1e10 ? duplicateTx.time * 1000 : duplicateTx.time)
                   .toISOString().slice(0, 10);
-                router.push({ pathname: '/(tabs)', params: { scrollToDate: dupDate } } as any);
+                router.push({ pathname: '/(tabs)/transactions', params: { scrollToDate: dupDate } } as any);
               }}
               activeOpacity={0.75}
             >
